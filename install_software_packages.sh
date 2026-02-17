@@ -81,7 +81,7 @@ fi
 # Get user information
 log_info "Getting user information..."
 read -p "Enter your ham radio callsign: " CALLSIGN
-read -p "Enter your full name: " FULL_NAME
+read -p "Enter your handle/name: " FULL_NAME
 read -p "Enter your grid square (e.g., FN20): " GRID_SQUARE
 
 CALLSIGN=${CALLSIGN^^}  # Convert to uppercase

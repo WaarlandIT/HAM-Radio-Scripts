@@ -77,7 +77,7 @@ When all is done wyou see this:
 Press Enter to exit...
 [INFO] Installation complete!
 ```
-When you press **Enter** you see the following nots:
+When you press **Enter** you see the following notes:
 ```
 ================================================
   Post-Installation Notes

@@ -1,7 +1,9 @@
 The bash script installs a large number of HAM-Radio related software packages. The script is created only to work on Xubuntu/Ubuntu 24.04 on Intel/AMD x86_64 CPU architecture.
 
 Download the script using wget:
-`wget https://raw.githubusercontent.com/WaarlandIT/HAM-Radio-Scripts/refs/heads/main/install_software_packages.sh`
+```
+wget https://raw.githubusercontent.com/WaarlandIT/HAM-Radio-Scripts/refs/heads/main/install_software_packages.sh
+```
 
 Give the script execute rights:
 `chmod +x install_software_packages.sh`

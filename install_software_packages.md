@@ -108,6 +108,7 @@ When you press **Enter** you see the following nots:
 
 
 
+The installation is now complete and it is now time to explore all the software in the menu of your desktop. 
 
 All applications are registered under a **Ham Radio** submenu in your desktop applications menu.
 
@@ -252,4 +253,3 @@ All applications are registered under a **Ham Radio** submenu in your desktop ap
 
 *73 de PA3RPW*
 
-The installation is now complete and it is now time to explore all the software in the menu of your desktop. 

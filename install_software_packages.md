@@ -51,10 +51,13 @@ That can take a while depending on how fast your computer is etc. **Don't lose t
 
 After some time you get a pop-up question about AX25, that is used for packet radio 
 
+![alt text](https://github.com/WaarlandIT/HAM-Radio-Scripts/blob/main/images/ax25.png "AX25")
 
 Answer **Yes** by moving the cursor with the arrow keys on your keyboard and hit enter. 
 
 Again after some time you get a config file in an editor where you can enter your callsign between the quotes and some other details, you can also do this later.
+
+![alt text](https://github.com/WaarlandIT/HAM-Radio-Scripts/blob/main/images/winlink.png "Winlink")
 
 Close the editor by clicking **CTRL-X** and when you made some changes you need to answer with a **Y** and **Enter** to continue.
 

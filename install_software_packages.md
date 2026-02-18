@@ -1,4 +1,5 @@
-The bash script installs a large number of HAM-Radio related software packages. The script is created only to work on Xubuntu/Ubuntu 24.04 on Intel/AMD x86_64 CPU architecture.
+#The bash script installs a large number of HAM-Radio related software packages. 
+###The script is created only to work on Xubuntu/Ubuntu 24.04 on Intel/AMD x86_64 CPU architecture.
 
 Download the script using wget:
 ```

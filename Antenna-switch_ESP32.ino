@@ -7,13 +7,15 @@
  * First boot (or after reset of settings):
  *   Connect to AP  "AS01"
  *   Browse to      http://192.168.4.1
+ *   Select SSID, set password and optional static IP and save.
+ *   Board reboots and connects to your network.
  */
 
 #include <WiFi.h>
 #include <Preferences.h>
 
 // ─── Structs (must be declared before use in Arduino IDE) ────────────────────
-struct NetCfg { String ssid, pass, ip, gw; };
+struct NetCfg { String ssid, pass, ip, gw; bool staticIP; };
 struct HttpReq { String method, path, body; };
 
 // ─── GPIO pins (avoid strapping pins 2, 8, 9) ────────────────────────────────
@@ -48,20 +50,24 @@ void allOff() {
 NetCfg loadCfg() {
   prefs.begin("netcfg", true);
   NetCfg c;
-  c.ssid = prefs.getString("ssid", "");
-  c.pass = prefs.getString("pass", "");
-  c.ip   = prefs.getString("ip",   "");
-  c.gw   = prefs.getString("gw",   "");
+  c.ssid     = prefs.getString("ssid", "");
+  c.pass     = prefs.getString("pass", "");
+  c.ip       = prefs.getString("ip",   "");
+  c.gw       = prefs.getString("gw",   "");
+  c.staticIP = prefs.getBool("static", false);
   prefs.end();
+  Serial.println("Loaded config – SSID: '" + c.ssid + "' static: " + String(c.staticIP));
   return c;
 }
 void saveCfg(const NetCfg& c) {
   prefs.begin("netcfg", false);
-  prefs.putString("ssid", c.ssid);
-  prefs.putString("pass", c.pass);
-  prefs.putString("ip",   c.ip);
-  prefs.putString("gw",   c.gw);
+  prefs.putString("ssid",   c.ssid);
+  prefs.putString("pass",   c.pass);
+  prefs.putString("ip",     c.ip);
+  prefs.putString("gw",     c.gw);
+  prefs.putBool  ("static", c.staticIP);
   prefs.end();
+  Serial.println("Saved config – SSID: " + c.ssid + " static: " + String(c.staticIP));
 }
 void clearCfg() {
   prefs.begin("netcfg", false);
@@ -177,6 +183,8 @@ String buildConfigPage(const String& msg = "") {
   h += "<h1>&#9889; WiFi Configuration</h1>"
        "<p class='sub'>Antenna Switch &nbsp;|&nbsp; PA3RPW 2026</p>";
   if (msg.length()) h += "<p style='color:#e94560'>" + msg + "</p>";
+  String chk  = c.staticIP ? " checked" : "";
+  String dsp  = c.staticIP ? "grid" : "none";
   h += "<form class='cfg' method='POST' action='/save'>"
        "<label>WiFi Network</label>"
        "<select name='ssid' required style='"
@@ -187,13 +195,22 @@ String buildConfigPage(const String& msg = "") {
        "</select>"
        "<label>Password</label>"
        "<input name='pass' type='password' placeholder='WiFi password' value='" + c.pass + "'>"
+       // Static IP toggle
+       "<label style='display:flex;align-items:center;gap:10px;cursor:pointer'>"
+       "<input type='checkbox' name='useStatic' id='useStatic' value='1'" + chk +
+       " onchange=\"document.getElementById('staticFields').style.display="
+       "this.checked?'grid':'none'\" style='width:18px;height:18px;accent-color:#e94560'>"
+       "<span>Use static IP</span>"
+       "</label>"
+       "<div id='staticFields' style='display:" + dsp + ";grid-gap:10px'>"
        "<label>Static IP  <small style='color:#666'>(e.g. 192.168.178.15)</small></label>"
-       "<input name='ip' type='text' placeholder='192.168.1.100' value='" + c.ip + "' required>"
+       "<input name='ip' type='text' placeholder='192.168.1.100' value='" + c.ip + "'>"
        "<label>Gateway  <small style='color:#666'>(e.g. 192.168.178.1)</small></label>"
-       "<input name='gw' type='text' placeholder='192.168.1.1' value='" + c.gw + "' required>"
+       "<input name='gw' type='text' placeholder='192.168.1.1' value='" + c.gw + "'>"
+       "</div>"
        "<button type='submit'>Save &amp; Connect</button>"
        "</form>"
-       "<p class='note'>Subnet is fixed at 255.255.255.0 &nbsp;|&nbsp; DNS: 8.8.8.8<br>"
+       "<p class='note'>Subnet fixed at 255.255.255.0 &nbsp;|&nbsp; DNS: 8.8.8.8<br>"
        "<a href='/config' style='color:#555;font-size:.75rem'>&#8635; Rescan networks</a></p>"
        "</body></html>";
   return h;
@@ -259,10 +276,14 @@ HttpReq readRequest(WiFiClient& cl) {
         r.method = line.substring(0, s1);
         r.path   = line.substring(s1+1, s2);
         firstLine = false;
-      } else if (line.startsWith("Content-Length:")) {
-        contentLen = line.substring(15).toInt();
-      } else if (line.length() == 0) {
-        break; // end of headers
+      } else {
+        String lineLower = line;
+        lineLower.toLowerCase();
+        if (lineLower.startsWith("content-length:")) {
+          contentLen = line.substring(line.indexOf(':') + 1).toInt();
+        } else if (line.length() == 0) {
+          break;
+        }
       }
       line = "";
     } else if (c != '\r') { line += c; }
@@ -286,19 +307,25 @@ void handleClient(WiFiClient& cl) {
   // ── Save posted config (both AP and STA mode) ──
   if (req.method == "POST" && req.path == "/save") {
     NetCfg nc;
-    nc.ssid = qval(req.body, "ssid");
-    nc.pass = qval(req.body, "pass");
-    nc.ip   = qval(req.body, "ip");
-    nc.gw   = qval(req.body, "gw");
+    nc.ssid     = qval(req.body, "ssid");
+    nc.pass     = qval(req.body, "pass");
+    nc.ip       = qval(req.body, "ip");
+    nc.gw       = qval(req.body, "gw");
+    nc.staticIP = (qval(req.body, "useStatic") == "1");
+
     IPAddress testIP, testGW;
-    if (nc.ssid.length() == 0 || !parseIP(nc.ip, testIP) || !parseIP(nc.gw, testGW)) {
-      sendHTML(cl, buildConfigPage("&#9888; Invalid input – check IP/gateway format."));
+    if (nc.ssid.length() == 0) {
+      sendHTML(cl, buildConfigPage("&#9888; Please select a network."));
+    } else if (nc.staticIP && (!parseIP(nc.ip, testIP) || !parseIP(nc.gw, testGW))) {
+      sendHTML(cl, buildConfigPage("&#9888; Invalid static IP or gateway format."));
     } else {
       saveCfg(nc);
       String ok = htmlHead("Saved") +
         "<h1 style='color:#4caf50'>&#10003; Saved!</h1>"
-        "<p style='margin-top:16px'>Rebooting and connecting to <b>" + nc.ssid + "</b>…</p>"
-        "<p>After ~5 s open: <b>http://" + nc.ip + "</b></p>"
+        "<p style='margin-top:16px'>Rebooting and connecting to <b>" + nc.ssid + "</b>…</p>" +
+        (nc.staticIP
+          ? "<p>After ~5 s open: <b>http://" + nc.ip + "</b></p>"
+          : "<p>IP assigned by DHCP – check your router for the address.</p>") +
         "</body></html>";
       sendHTML(cl, ok);
       cl.stop();
@@ -346,7 +373,7 @@ void startAP() {
 // ─── Setup ────────────────────────────────────────────────────────────────────
 void setup() {
   Serial.begin(115200);
-  delay(500);
+  delay(2000);   // give USB-CDC time to enumerate
 
   // GPIO outputs
   for (int i = 0; i < 5; i++) {
@@ -365,19 +392,26 @@ void setup() {
 
   NetCfg c = loadCfg();
 
-  if (c.ssid.length() == 0 || c.ip.length() == 0) {
+  if (c.ssid.length() == 0) {
     Serial.println("No config found – starting setup portal");
     startAP();
     return;
   }
 
   // Connect with saved settings
-  IPAddress ip, gw, sn(255,255,255,0), dns(8,8,8,8);
-  parseIP(c.ip, ip);
-  parseIP(c.gw, gw);
-
-  if (!WiFi.config(ip, gw, sn, dns))
-    Serial.println("Static IP config failed");
+  if (c.staticIP && c.ip.length() > 0 && c.gw.length() > 0) {
+    IPAddress ip, gw, sn(255,255,255,0), dns(8,8,8,8);
+    parseIP(c.ip, ip);
+    parseIP(c.gw, gw);
+    if (!WiFi.config(ip, gw, sn, dns))
+      Serial.println("Static IP config failed");
+    else
+      Serial.println("Using static IP: " + c.ip);
+  } else {
+    // Force DHCP – passing all-zero addresses re-enables DHCP on ESP32
+    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
+    Serial.println("Using DHCP");
+  }
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(c.ssid.c_str(), c.pass.c_str());
@@ -389,6 +423,8 @@ void setup() {
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\nConnected! http://" + WiFi.localIP().toString());
+    if (!c.staticIP)
+      Serial.println("DHCP assigned IP: " + WiFi.localIP().toString());
     server.begin();
   } else {
     Serial.println("\nConnection failed – falling back to setup portal");

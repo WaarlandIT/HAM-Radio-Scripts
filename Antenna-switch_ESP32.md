@@ -20,7 +20,7 @@ I used the Arduino IDE to compile and upload the code to the board.
 
 After uploading the ESP32 enables a wifi access point (AS) you can connect to without a password. After you are connected browse to http://192.168.4.1
 
-![alt text](https://github.com/WaarlandIT/HAM-Radio-Scripts/blob/main/images/AS01.jpg | width=100 "AS1")
+![alt text](https://github.com/WaarlandIT/HAM-Radio-Scripts/blob/main/images/AS01.jpg "AS1" | width=100)
 
 You can now manage the relays. At the bottom you see a link "Wifi settings", click on that to set your home wifi.
 

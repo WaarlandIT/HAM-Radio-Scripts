@@ -32,3 +32,50 @@ Select your SSID and set your password, check the static IP box if you want to s
 
 After clicking Save & Connect the ESP32 will restart and connect to your wifi. 
 If you set a static IP you can browse to that or you have to check your router to find the ip-address.
+
+## Added a help page in the Webinterface
+### Web Interface
+Open http://<ip>/ in any browser to access the antenna switch control panel. Click an antenna button to activate it. Only one antenna can be active at a time. Use All OFF to deactivate all outputs.
+
+### Switch Antenna
+Switch to a specific antenna via GET request:
+
+GET /?antenna=N
+N = antenna number 1–5, or 0 to turn all off.
+
+Examples:
+
+http://<ip>/?antenna=1   → activate Antenna 1
+http://<ip>/?antenna=3   → activate Antenna 3
+http://<ip>/?antenna=0   → all OFF
+JSON response:
+
+{"status":"ok","antenna":1,"name":"Antenna 1"}
+### Get Status
+Query the currently active antenna:
+
+GET /status
+JSON response (antenna active):
+
+{"status":"ok","antenna":2,"name":"Antenna 2","active":true}
+JSON response (all off):
+
+{"status":"ok","antenna":0,"name":"off","active":false}
+### WiFi Configuration
+Open http://<ip>/config to change WiFi settings. DHCP is the default. Enable Use static IP to assign a fixed address.
+
+To reset WiFi config and return to AP mode:
+
+Hold the BOOT button for 3 seconds at runtime, or
+Hold BOOT while powering on the board
+### Access Point Mode
+When no WiFi is configured (or connection fails), the board starts its own AP:
+
+SSID: AS01  (open, no password)
+Config portal: http://192.168.4.1/config
+Antenna control is also available via AP at http://192.168.4.1/
+
+### curl Examples
+curl http://<ip>/?antenna=2
+curl http://<ip>/?antenna=0
+curl http://<ip>/status

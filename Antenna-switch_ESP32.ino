@@ -5,10 +5,13 @@
  * Arduino IDE – ESP32 Arduino core v2 / v3
  *
  * First boot (or after reset of settings):
- *   Connect to AP  "AS01"
+ *   Connect to AP  "AS01"  (no password)
  *   Browse to      http://192.168.4.1
- *   Select SSID, set password and optional static IP and save.
+ *   Select SSID, enter password, optional static IP and save.
  *   Board reboots and connects to your network.
+ *
+ * To re-enter config mode: hold GPIO 9 (BOOT button) LOW for 3 s at runtime,
+ * or hold BOOT at power-on to erase saved config.
  */
 
 #include <WiFi.h>
@@ -19,7 +22,7 @@ struct NetCfg { String ssid, pass, ip, gw; bool staticIP; };
 struct HttpReq { String method, path, body; };
 
 // ─── GPIO pins (avoid strapping pins 2, 8, 9) ────────────────────────────────
-const uint8_t GPIO_PINS[5] = {3, 4, 5, 6, 7};
+const uint8_t GPIO_PINS[5] = {4, 5, 6, 7, 8};
 const char*   PIN_NAMES[5] = {"Antenna 1", "Antenna 2", "Antenna 3", "Antenna 4", "Antenna 5"};
 
 // ─── AP credentials ───────────────────────────────────────────────────────────
@@ -46,7 +49,7 @@ void allOff() {
   activePin = -1;
 }
 
-// ─── Read saved config ────────────────────────────────────────────────────────
+// ─── Read/save/clear config ───────────────────────────────────────────────────
 NetCfg loadCfg() {
   prefs.begin("netcfg", true);
   NetCfg c;
@@ -104,12 +107,12 @@ String qval(const String& body, const String& key) {
   return urlDecode(e == -1 ? body.substring(p) : body.substring(p, e));
 }
 
-// ─── Parse IP string "a.b.c.d" into IPAddress ────────────────────────────────
+// ─── Parse IP string into IPAddress ──────────────────────────────────────────
 bool parseIP(const String& s, IPAddress& out) {
   return out.fromString(s);
 }
 
-// ─── HTML helpers ─────────────────────────────────────────────────────────────
+// ─── HTML head ────────────────────────────────────────────────────────────────
 String htmlHead(const String& title) {
   return "<!DOCTYPE html><html lang='en'><head>"
     "<meta charset='UTF-8'>"
@@ -147,29 +150,27 @@ String htmlHead(const String& title) {
 
 // ─── WiFi scan ────────────────────────────────────────────────────────────────
 String buildScanOptions(const String& selected) {
-  String opts = "";
   int n = WiFi.scanNetworks();
-  if (n <= 0) {
-    opts = "<option value=''>-- No networks found --</option>";
-    return opts;
-  }
-  // Sort by RSSI (simple bubble sort on indices)
+  if (n <= 0) return "<option value=''>-- No networks found --</option>";
+
+  // Sort by RSSI descending
   int idx[n];
   for (int i = 0; i < n; i++) idx[i] = i;
   for (int i = 0; i < n-1; i++)
     for (int j = i+1; j < n; j++)
       if (WiFi.RSSI(idx[j]) > WiFi.RSSI(idx[i])) { int t=idx[i]; idx[i]=idx[j]; idx[j]=t; }
 
+  String opts = "";
   for (int i = 0; i < n; i++) {
-    int k = idx[i];
+    int k       = idx[i];
     String ssid = WiFi.SSID(k);
     int rssi    = WiFi.RSSI(k);
     bool enc    = (WiFi.encryptionType(k) != WIFI_AUTH_OPEN);
     String bar  = rssi > -60 ? "▂▄▆█" : rssi > -75 ? "▂▄▆_" : rssi > -85 ? "▂▄__" : "▂___";
     String sel  = (ssid == selected) ? " selected" : "";
-    opts += "<option value='" + ssid + "'" + sel + ">" +
-            bar + "  " + ssid + (enc ? "  🔒" : "") +
-            "  (" + rssi + " dBm)</option>";
+    opts += "<option value='" + ssid + "'" + sel + ">"
+            + bar + "  " + ssid + (enc ? "  🔒" : "")
+            + "  (" + rssi + " dBm)</option>";
   }
   WiFi.scanDelete();
   return opts;
@@ -183,8 +184,8 @@ String buildConfigPage(const String& msg = "") {
   h += "<h1>&#9889; WiFi Configuration</h1>"
        "<p class='sub'>Antenna Switch &nbsp;|&nbsp; PA3RPW 2026</p>";
   if (msg.length()) h += "<p style='color:#e94560'>" + msg + "</p>";
-  String chk  = c.staticIP ? " checked" : "";
-  String dsp  = c.staticIP ? "grid" : "none";
+  String chk = c.staticIP ? " checked" : "";
+  String dsp = c.staticIP ? "grid" : "none";
   h += "<form class='cfg' method='POST' action='/save'>"
        "<label>WiFi Network</label>"
        "<select name='ssid' required style='"
@@ -195,7 +196,6 @@ String buildConfigPage(const String& msg = "") {
        "</select>"
        "<label>Password</label>"
        "<input name='pass' type='password' placeholder='WiFi password' value='" + c.pass + "'>"
-       // Static IP toggle
        "<label style='display:flex;align-items:center;gap:10px;cursor:pointer'>"
        "<input type='checkbox' name='useStatic' id='useStatic' value='1'" + chk +
        " onchange=\"document.getElementById('staticFields').style.display="
@@ -216,7 +216,88 @@ String buildConfigPage(const String& msg = "") {
   return h;
 }
 
-// ─── Main antenna control page ────────────────────────────────────────────────
+// ─── Help page ────────────────────────────────────────────────────────────────
+String buildHelpPage() {
+  String h = htmlHead("Antenna Switch – Help");
+  h += "<h1>&#9889; Antenna Switch Help</h1>"
+       "<p class='sub'>API &amp; usage documentation &nbsp;|&nbsp; PA3RPW 2026</p>"
+
+       // Web interface
+       "<div style='width:100%;max-width:560px'>"
+       "<h2 style='color:#e94560;font-size:1rem;margin:18px 0 8px'>&#127760; Web Interface</h2>"
+       "<p>Open <code style='color:#aaa'>http://&lt;ip&gt;/</code> in any browser to access "
+       "the antenna switch control panel. Click an antenna button to activate it. "
+       "Only one antenna can be active at a time. Use <b>All OFF</b> to deactivate all outputs.</p>"
+
+       // Switch antenna
+       "<h2 style='color:#e94560;font-size:1rem;margin:18px 0 8px'>&#128268; Switch Antenna</h2>"
+       "<p>Switch to a specific antenna via GET request:</p>"
+       "<pre style='background:#121220;padding:12px;border-radius:8px;font-size:.82rem;"
+            "color:#aaa;overflow-x:auto;margin:6px 0'>GET /?antenna=N</pre>"
+       "<p><code style='color:#aaa'>N</code> = antenna number <b>1–5</b>, or <b>0</b> to turn all off.</p>"
+       "<p style='margin-top:6px'>Examples:</p>"
+       "<pre style='background:#12122a;padding:12px;border-radius:8px;font-size:.82rem;"
+            "color:#aaa;overflow-x:auto;margin:6px 0'>"
+       "http://&lt;ip&gt;/?antenna=1   → activate Antenna 1\n"
+       "http://&lt;ip&gt;/?antenna=3   → activate Antenna 3\n"
+       "http://&lt;ip&gt;/?antenna=0   → all OFF</pre>"
+       "<p>JSON response:</p>"
+       "<pre style='background:#12122a;padding:12px;border-radius:8px;font-size:.82rem;"
+            "color:#aaa;overflow-x:auto;margin:6px 0'>"
+       "{\"status\":\"ok\",\"antenna\":1,\"name\":\"Antenna 1\"}</pre>"
+
+       // Status
+       "<h2 style='color:#e94560;font-size:1rem;margin:18px 0 8px'>&#128202; Get Status</h2>"
+       "<p>Query the currently active antenna:</p>"
+       "<pre style='background:#12122a;padding:12px;border-radius:8px;font-size:.82rem;"
+            "color:#aaa;overflow-x:auto;margin:6px 0'>GET /status</pre>"
+       "<p>JSON response (antenna active):</p>"
+       "<pre style='background:#12122a;padding:12px;border-radius:8px;font-size:.82rem;"
+            "color:#aaa;overflow-x:auto;margin:6px 0'>"
+       "{\"status\":\"ok\",\"antenna\":2,\"name\":\"Antenna 2\",\"active\":true}</pre>"
+       "<p>JSON response (all off):</p>"
+       "<pre style='background:#12122a;padding:12px;border-radius:8px;font-size:.82rem;"
+            "color:#aaa;overflow-x:auto;margin:6px 0'>"
+       "{\"status\":\"ok\",\"antenna\":0,\"name\":\"off\",\"active\":false}</pre>"
+
+       // WiFi config
+       "<h2 style='color:#e94560;font-size:1rem;margin:18px 0 8px'>&#9881; WiFi Configuration</h2>"
+       "<p>Open <code style='color:#aaa'>http://&lt;ip&gt;/config</code> to change WiFi settings. "
+       "DHCP is the default. Enable <b>Use static IP</b> to assign a fixed address.</p>"
+       "<p style='margin-top:6px'>To reset WiFi config and return to AP mode:</p>"
+       "<ul style='color:#aaa;font-size:.82rem;margin:6px 0 0 18px;line-height:1.8'>"
+       "<li>Hold the <b>BOOT</b> button for 3 seconds at runtime, <b>or</b></li>"
+       "<li>Hold <b>BOOT</b> while powering on the board</li>"
+       "</ul>"
+
+       // AP mode
+       "<h2 style='color:#e94560;font-size:1rem;margin:18px 0 8px'>&#128225; Access Point Mode</h2>"
+       "<p>When no WiFi is configured (or connection fails), the board starts its own AP:</p>"
+       "<ul style='color:#aaa;font-size:.82rem;margin:6px 0 0 18px;line-height:1.8'>"
+       "<li>SSID: <b>AS01</b> &nbsp;(open, no password)</li>"
+       "<li>Config portal: <b>http://192.168.4.1/config</b></li>"
+       "<li>Antenna control is also available via AP at <b>http://192.168.4.1/</b></li>"
+       "</ul>"
+
+       // curl examples
+       "<h2 style='color:#e94560;font-size:1rem;margin:18px 0 8px'>&#9654; curl Examples</h2>"
+       "<pre style='background:#12122a;padding:12px;border-radius:8px;font-size:.82rem;"
+            "color:#aaa;overflow-x:auto;margin:6px 0'>"
+       "curl http://&lt;ip&gt;/?antenna=2\n"
+       "curl http://&lt;ip&gt;/?antenna=0\n"
+       "curl http://&lt;ip&gt;/status</pre>"
+
+       "<p style='margin-top:24px;text-align:center'>"
+       "<a href='/' style='color:#e94560;font-size:.85rem;text-decoration:none'>"
+       "&#8592; Back to Antenna Switch</a></p>"
+       "<p style='margin-top:24px;font-size:.75rem;color:#444;text-align:center'>"
+       "Latest code available on GitHub:<br>"
+       "<a href='https://github.com/WaarlandIT/HAM-Radio-Scripts' target='_blank' "
+       "style='color:#555;text-decoration:none'>"
+       "&#128279; github.com/WaarlandIT/HAM-Radio-Scripts</a></p>"
+       "</div></body></html>";
+  return h;
+}
 String buildMainPage() {
   String h = htmlHead("Antenna Switch Control");
   h += "<h1>&#9889; Antenna Switch Control</h1>"
@@ -235,7 +316,14 @@ String buildMainPage() {
        "</p>"
        "<p style='margin-top:28px'>"
        "<a href='/config' style='font-size:.75rem;color:#555;text-decoration:none'>"
-       "&#9881; WiFi settings</a></p>"
+       "&#9881; WiFi settings</a>"
+       " &nbsp;|&nbsp; "
+       "<a href='/help' style='font-size:.75rem;color:#555;text-decoration:none'>"
+       "&#10067; Help &amp; API</a></p>"
+       "<p style='margin-top:16px;font-size:.72rem;color:#444;text-align:center'>"
+       "API: <code style='color:#666'>/?antenna=1..5</code> &nbsp;|&nbsp;"
+       "<code style='color:#666'>/?antenna=0</code> = off &nbsp;|&nbsp;"
+       "<code style='color:#666'>/status</code></p>"
        "<p>by: PA3RPW 2026</p>"
        "</body></html>";
   return h;
@@ -265,7 +353,6 @@ HttpReq readRequest(WiFiClient& cl) {
   int contentLen = 0;
   bool firstLine = true;
 
-  // Read headers
   while (cl.connected() && millis() - t < 3000) {
     if (!cl.available()) { delay(1); continue; }
     char c = cl.read();
@@ -277,24 +364,20 @@ HttpReq readRequest(WiFiClient& cl) {
         r.path   = line.substring(s1+1, s2);
         firstLine = false;
       } else {
-        String lineLower = line;
-        lineLower.toLowerCase();
-        if (lineLower.startsWith("content-length:")) {
+        String ll = line; ll.toLowerCase();
+        if (ll.startsWith("content-length:"))
           contentLen = line.substring(line.indexOf(':') + 1).toInt();
-        } else if (line.length() == 0) {
+        else if (line.length() == 0)
           break;
-        }
       }
       line = "";
     } else if (c != '\r') { line += c; }
   }
 
-  // Read body for POST
   if (r.method == "POST" && contentLen > 0) {
     t = millis();
-    while ((int)r.body.length() < contentLen && cl.connected() && millis()-t < 2000) {
+    while ((int)r.body.length() < contentLen && cl.connected() && millis()-t < 2000)
       if (cl.available()) r.body += (char)cl.read();
-    }
   }
   return r;
 }
@@ -304,7 +387,6 @@ void handleClient(WiFiClient& cl) {
   HttpReq req = readRequest(cl);
   if (req.method.length() == 0) { cl.stop(); return; }
 
-  // ── Save posted config (both AP and STA mode) ──
   if (req.method == "POST" && req.path == "/save") {
     NetCfg nc;
     nc.ssid     = qval(req.body, "ssid");
@@ -335,14 +417,18 @@ void handleClient(WiFiClient& cl) {
     cl.stop(); return;
   }
 
-  // ── Config portal page ──
   if (req.path == "/config" || req.path.startsWith("/config?")) {
     sendHTML(cl, buildConfigPage());
     cl.stop(); return;
   }
 
-  // ── Antenna control routes (available in BOTH AP and STA mode) ──
+  if (req.path == "/help") {
+    sendHTML(cl, buildHelpPage());
+    cl.stop(); return;
+  }
+
   if (req.path.startsWith("/set")) {
+    // Web UI button: /set?pin=N
     int p = req.path.indexOf("pin=");
     if (p != -1) {
       int idx = req.path.charAt(p+4) - '0';
@@ -352,14 +438,49 @@ void handleClient(WiFiClient& cl) {
   } else if (req.path.startsWith("/off")) {
     allOff();
     sendRedirect(cl);
+  } else if (req.path.indexOf("antenna=") != -1) {
+    // API: /?antenna=1..5  or  /api?antenna=1..5
+    int p   = req.path.indexOf("antenna=");
+    int num = req.path.substring(p + 8).toInt();  // 1-based
+    String json;
+    if (num >= 1 && num <= 5) {
+      setPin(num - 1);
+      json = "{\"status\":\"ok\",\"antenna\":" + String(num) +
+             ",\"name\":\"" + String(PIN_NAMES[num-1]) + "\"}";
+    } else if (num == 0) {
+      allOff();
+      json = "{\"status\":\"ok\",\"antenna\":0,\"name\":\"off\"}";
+    } else {
+      json = "{\"status\":\"error\",\"message\":\"antenna must be 0-5\"}";
+    }
+    cl.println("HTTP/1.1 200 OK");
+    cl.println("Content-Type: application/json");
+    cl.println("Connection: close");
+    cl.print("Content-Length: "); cl.println(json.length());
+    cl.println();
+    cl.print(json);
+  } else if (req.path == "/status" || req.path.startsWith("/status?")) {
+    // API: /status  – returns current active antenna as JSON
+    String json;
+    if (activePin >= 0) {
+      json = "{\"status\":\"ok\",\"antenna\":" + String(activePin + 1) +
+             ",\"name\":\"" + String(PIN_NAMES[activePin]) + "\",\"active\":true}";
+    } else {
+      json = "{\"status\":\"ok\",\"antenna\":0,\"name\":\"off\",\"active\":false}";
+    }
+    cl.println("HTTP/1.1 200 OK");
+    cl.println("Content-Type: application/json");
+    cl.println("Connection: close");
+    cl.print("Content-Length: "); cl.println(json.length());
+    cl.println();
+    cl.print(json);
   } else {
-    // Root – show antenna page in both modes
     sendHTML(cl, buildMainPage());
   }
   cl.stop();
 }
 
-// ─── Start AP config portal ───────────────────────────────────────────────────
+// ─── Start AP portal ──────────────────────────────────────────────────────────
 void startAP() {
   apMode = true;
   WiFi.mode(WIFI_AP);
@@ -373,18 +494,15 @@ void startAP() {
 // ─── Setup ────────────────────────────────────────────────────────────────────
 void setup() {
   Serial.begin(115200);
-  delay(2000);   // give USB-CDC time to enumerate
+  delay(2000);
 
-  // GPIO outputs
   for (int i = 0; i < 5; i++) {
     pinMode(GPIO_PINS[i], OUTPUT);
     digitalWrite(GPIO_PINS[i], LOW);
   }
 
-  // Config-reset button
   pinMode(CFG_BTN, INPUT_PULLUP);
 
-  // Check if user wants to reset config (hold BOOT at power-on)
   if (digitalRead(CFG_BTN) == LOW) {
     Serial.println("Config reset requested");
     clearCfg();
@@ -398,7 +516,6 @@ void setup() {
     return;
   }
 
-  // Connect with saved settings
   if (c.staticIP && c.ip.length() > 0 && c.gw.length() > 0) {
     IPAddress ip, gw, sn(255,255,255,0), dns(8,8,8,8);
     parseIP(c.ip, ip);
@@ -408,7 +525,6 @@ void setup() {
     else
       Serial.println("Using static IP: " + c.ip);
   } else {
-    // Force DHCP – passing all-zero addresses re-enables DHCP on ESP32
     WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
     Serial.println("Using DHCP");
   }
@@ -434,7 +550,6 @@ void setup() {
 
 // ─── Loop ─────────────────────────────────────────────────────────────────────
 void loop() {
-  // Hold BOOT button 3 s at runtime → reset config & reboot
   if (digitalRead(CFG_BTN) == LOW) {
     unsigned long held = millis();
     while (digitalRead(CFG_BTN) == LOW) {

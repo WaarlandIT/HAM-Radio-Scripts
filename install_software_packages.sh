@@ -2,12 +2,11 @@
 
 ################################################################################
 # Ham Radio Package Installer
-# Version 1.0.0  (2026-05-14)
-# Optimized for Ubuntu 26.04 "Resolute Raccoon"
-# Fixes: complete desktop menu integration, updated package names for 26.04
+# Version 1.0.1  (2026-05-15)
+# For Ubuntu 26.04 "Resolute Raccoon" only
 ################################################################################
 
-VERSION="1.0.0"
+VERSION="1.0.1"
 
 # Colors for output
 RED='\033[0;31m'
@@ -158,8 +157,8 @@ if [[ $EUID -eq 0 ]]; then
 fi
 
 # Accept Ubuntu 24.04, 25.x, or 26.04 "Resolute Raccoon"
-if ! grep -qE "(2[456]\.|resolute)" /etc/os-release; then
-    log_warn "This script targets Ubuntu 24.04–26.04 (Resolute Raccoon). Your system may behave differently."
+if ! grep -qE "(26\.04|resolute)" /etc/os-release; then
+    log_warn "This script is designed for Ubuntu 26.04 (Resolute Raccoon) only."
     read -p "Continue anyway? (y/N) " -n 1 -r; echo
     [[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
 fi

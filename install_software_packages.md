@@ -17,19 +17,6 @@ The bash script installs a large number of HAM-Radio related software packages, 
 
 ---
 
-## Companion scripts
-
-Two helper scripts are provided alongside the installer:
-
-| Script | Purpose |
-| --- | --- |
-| `check_links.sh` | Verifies every download URL and git repository used by the installer |
-| `check_packages.sh` | Checks every required apt package against the 26.04 repos before installing |
-
-Run these first to spot any issues on your specific machine before committing to the full install.
-
----
-
 ## Quick start
 
 Download the script:

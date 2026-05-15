@@ -2,11 +2,11 @@
 
 ################################################################################
 # Ham Radio Package Installer
-# Version 1.0.1  (2026-05-15)
+# Version 1.0.2  (2026-05-15)
 # For Ubuntu 26.04 "Resolute Raccoon" only
 ################################################################################
 
-VERSION="1.0.1"
+VERSION="1.0.2"
 
 # Colors for output
 RED='\033[0;31m'
@@ -241,12 +241,7 @@ install_system_prep() {
         libusb-1.0-0-dev libssl-dev libfftw3-dev libsamplerate0-dev \
         libpulse-dev portaudio19-dev libasound2-dev libsndfile1-dev \
         libxml2-dev libxslt1-dev \
-        libhamlib-dev libhamlib4t64 libhamlib-utils 2>/dev/null || \
-    sudo apt install -y \
-        libusb-1.0-0-dev libssl-dev libfftw3-dev libsamplerate0-dev \
-        libpulse-dev portaudio19-dev libasound2-dev libsndfile1-dev \
-        libxml2-dev libxslt1-dev \
-        libhamlib-dev libhamlib4 libhamlib-utils || true
+        libhamlib-dev libhamlib-utils || true
 
     # GUI toolkits — Qt6 is default on 26.04; keep Qt5 as fallback
     sudo apt install -y libgtk-3-dev 2>/dev/null || true
@@ -287,18 +282,31 @@ install_gridtracker() {
 
     cd /tmp
     ARCH=$(dpkg --print-architecture)
+
+    log_info "Resolving latest GridTracker version..."
+    GT_VERSION=$(curl -sL --max-time 15 \
+        "https://gridtracker.org/index.php/downloads/gridtracker-downloads" \
+        | grep -oP 'GridTracker2-\K[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1) || true
+    if [ -z "$GT_VERSION" ]; then
+        log_warn "Could not resolve GridTracker version from downloads page"
+        log_info "Manual download: https://gridtracker.org/index.php/downloads/gridtracker-downloads"
+        return 0
+    fi
+    log_info "GridTracker latest version: $GT_VERSION"
+
     case "$ARCH" in
-        amd64)        GT_PACKAGE="GridTracker2-2.250914.1-amd64.deb" ;;
-        arm64)        GT_PACKAGE="GridTracker2-2.250914.1-arm64.deb" ;;
-        armhf|armv7l) GT_PACKAGE="GridTracker2-2.250914.1-armv7l.deb" ;;
+        amd64)        GT_PACKAGE="GridTracker2-${GT_VERSION}-amd64.deb" ;;
+        arm64)        GT_PACKAGE="GridTracker2-${GT_VERSION}-arm64.deb" ;;
+        armhf|armv7l) GT_PACKAGE="GridTracker2-${GT_VERSION}-armv7l.deb" ;;
         *)
             log_warn "GridTracker not available for architecture: $ARCH"
             return 0 ;;
     esac
 
-    if wget -q --show-progress "https://download2.gridtracker.org/${GT_PACKAGE}" 2>/dev/null; then
-        sudo dpkg -i "${GT_PACKAGE}" 2>/dev/null || sudo apt --fix-broken install -y
-        rm -f "${GT_PACKAGE}"
+    if wget -q --show-progress "https://download2.gridtracker.org/${GT_PACKAGE}" \
+            -O "/tmp/${GT_PACKAGE}" 2>/dev/null; then
+        sudo dpkg -i "/tmp/${GT_PACKAGE}" 2>/dev/null || sudo apt --fix-broken install -y
+        rm -f "/tmp/${GT_PACKAGE}"
         if ! adopt_desktop "gridtracker" "gridtracker.desktop" \
                 "X-HamRadio;X-HamRadio-DigitalModes;"; then
             write_desktop "gridtracker.desktop" \
@@ -308,7 +316,7 @@ install_gridtracker() {
         fi
         log_info "GridTracker installed!"
     else
-        log_warn "GridTracker download failed. Manual: https://gridtracker.org/index.php/downloads/"
+        log_warn "GridTracker download failed. Manual: https://gridtracker.org/index.php/downloads/gridtracker-downloads"
     fi
 }
 
@@ -335,9 +343,9 @@ install_js8call() {
 
     if wget -q --show-progress \
             "https://github.com/js8call/js8call/releases/download/v${JS8_VERSION}/${JS8_PACKAGE}" \
-            2>/dev/null; then
-        sudo dpkg -i "${JS8_PACKAGE}" 2>/dev/null || sudo apt --fix-broken install -y
-        rm -f "${JS8_PACKAGE}"
+            -O "/tmp/${JS8_PACKAGE}" 2>/dev/null; then
+        sudo dpkg -i "/tmp/${JS8_PACKAGE}" 2>/dev/null || sudo apt --fix-broken install -y
+        rm -f "/tmp/${JS8_PACKAGE}"
         write_desktop "js8call.desktop" \
             "JS8Call" "JS8 keyboard-to-keyboard messaging" \
             "js8call" "applications-internet" "X-HamRadio;X-HamRadio-DigitalModes;"
@@ -355,34 +363,68 @@ install_flarq() {
         return 0
     fi
 
-    log_info "FLArq not in repos — building from source..."
+    log_info "FLArq not in repos — building from fldigi source tarball..."
+    log_info "(flarq has no separate tarball; it is built from within the fldigi source tree)"
     sudo apt install -y \
         libfltk1.3-dev libsndfile1-dev libsamplerate0-dev libpulse-dev \
         libasound2-dev portaudio19-dev libhamlib-dev libudev-dev \
         libxi-dev libxfixes-dev libxft-dev libxinerama-dev libxcursor-dev || true
 
     cd /tmp
-    FLARQ_VERSION=$(curl -s "https://sourceforge.net/projects/flarq/files/" \
-        | grep -oP 'flarq-\K[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1)
-    [ -z "$FLARQ_VERSION" ] && FLARQ_VERSION="4.3.9"
 
-    FLARQ_TARBALL="flarq-${FLARQ_VERSION}.tar.gz"
-    if wget -q --show-progress -O "${FLARQ_TARBALL}" \
-            "https://sourceforge.net/projects/flarq/files/flarq-${FLARQ_VERSION}/${FLARQ_TARBALL}/download" \
-            2>/dev/null; then
-        tar -xzf "${FLARQ_TARBALL}"
-        cd "flarq-${FLARQ_VERSION}"
-        ./configure --prefix=/usr/local 2>/dev/null && \
-            make -j"$(nproc)" 2>/dev/null && \
-            sudo make install 2>/dev/null || { log_warn "FLArq build failed"; return 1; }
-        cd /tmp; rm -rf "flarq-${FLARQ_VERSION}" "${FLARQ_TARBALL}"
-        write_desktop "flarq.desktop" \
-            "FLArq" "ARQ file transfer for FLDigi" \
-            "flarq" "applications-internet" "X-HamRadio;X-HamRadio-DigitalModes;"
-        log_info "FLArq built and installed!"
-    else
-        log_warn "FLArq download failed. Manual: https://sourceforge.net/projects/flarq/files/"
+    # Scrape the latest fldigi version from w1hkj.org; fall back to SourceForge
+    FLDIGI_VERSION=$(curl -sL --max-time 10 "https://www.w1hkj.org/files/fldigi/" 2>/dev/null \
+        | grep -oP 'fldigi-\K[0-9]+\.[0-9]+\.[0-9]+(?=\.tar\.gz)' | sort -V | tail -1) || true
+    if [ -z "$FLDIGI_VERSION" ]; then
+        FLDIGI_VERSION=$(curl -sL --max-time 10 \
+            "https://sourceforge.net/projects/fldigi/files/fldigi/" 2>/dev/null \
+            | grep -oP 'fldigi-\K[0-9]+\.[0-9]+\.[0-9]+(?=\.tar\.gz)' | sort -V | tail -1) || true
     fi
+    [ -z "$FLDIGI_VERSION" ] && FLDIGI_VERSION="4.2.06"
+    log_info "Using fldigi source tarball v${FLDIGI_VERSION} (contains flarq)"
+
+    FLDIGI_TARBALL="fldigi-${FLDIGI_VERSION}.tar.gz"
+
+    # Try w1hkj.org, fall back to SourceForge
+    if ! wget -q --show-progress -O "${FLDIGI_TARBALL}" \
+            "https://www.w1hkj.org/files/fldigi/${FLDIGI_TARBALL}" 2>/dev/null; then
+        wget -q --show-progress -O "${FLDIGI_TARBALL}" \
+            "https://sourceforge.net/projects/fldigi/files/fldigi/${FLDIGI_TARBALL}/download" \
+            2>/dev/null || {
+            log_warn "FLArq/fldigi source download failed."
+            log_info "Manual: https://sourceforge.net/projects/fldigi/files/fldigi/"
+            rm -f "${FLDIGI_TARBALL}"
+            return 1
+        }
+    fi
+
+    tar -xzf "${FLDIGI_TARBALL}"
+    cd "fldigi-${FLDIGI_VERSION}"
+    autoreconf -fi 2>/dev/null || true
+    # Configure with fldigi disabled — only build flarq
+    ./configure --prefix=/usr/local --without-fldigi 2>/dev/null || \
+        ./configure --prefix=/usr/local 2>/dev/null || {
+            log_warn "FLArq configure failed"
+            cd /tmp; rm -rf "fldigi-${FLDIGI_VERSION}" "${FLDIGI_TARBALL}"
+            return 1
+        }
+    # Build only the flarq target if available, else build all
+    make -j"$(nproc)" flarq 2>/dev/null || make -j"$(nproc)" 2>/dev/null || {
+        log_warn "FLArq build failed"
+        cd /tmp; rm -rf "fldigi-${FLDIGI_VERSION}" "${FLDIGI_TARBALL}"
+        return 1
+    }
+    sudo install -m 755 src/flarq /usr/local/bin/flarq 2>/dev/null || \
+        sudo make install 2>/dev/null || {
+            log_warn "FLArq install failed"
+            cd /tmp; rm -rf "fldigi-${FLDIGI_VERSION}" "${FLDIGI_TARBALL}"
+            return 1
+        }
+    cd /tmp; rm -rf "fldigi-${FLDIGI_VERSION}" "${FLDIGI_TARBALL}"
+    write_desktop "flarq.desktop" \
+        "FLArq" "ARQ file transfer for FLDigi" \
+        "flarq" "applications-internet" "X-HamRadio;X-HamRadio-DigitalModes;"
+    log_info "FLArq built and installed!"
 }
 
 install_digital_modes() {
@@ -610,9 +652,9 @@ install_winlink() {
     ARCH=$(dpkg --print-architecture)
 
     if wget -q "https://github.com/la5nta/pat/releases/download/v${PAT_VERSION}/pat_${PAT_VERSION}_linux_${ARCH}.deb" \
-            -O pat.deb 2>/dev/null; then
-        sudo dpkg -i pat.deb || sudo apt --fix-broken install -y
-        rm -f pat.deb
+            -O /tmp/pat.deb 2>/dev/null; then
+        sudo dpkg -i /tmp/pat.deb || sudo apt --fix-broken install -y
+        rm -f /tmp/pat.deb
         mkdir -p ~/.config/pat
         pat configure 2>/dev/null || true
         write_desktop "pat-winlink.desktop" \
@@ -666,7 +708,7 @@ install_utilities() {
     safe_install "wwl"         "Maidenhead locator"  "wwl"     "applications-utilities" "X-HamRadio;X-HamRadio-Utilities;" true || true
     safe_install "splat"       "SPLAT RF terrain"    "splat"   "applications-utilities" "X-HamRadio;X-HamRadio-Utilities;" true || true
 
-    # fccexam / hamexam may be dropped in 26.04; skip silently
+    # fccexam and hamexam are available on 26.04
     safe_install "fccexam" "FCC Exam study" "fccexam" \
         "applications-education" "X-HamRadio;X-HamRadio-Utilities;" true || true
     safe_install "hamexam" "Ham exam study" "hamexam" \
@@ -680,31 +722,45 @@ install_utilities() {
 ################################################################################
 
 install_hamclock() {
+    log_warn "HamClock: Elwood Downey (WB0OEW) became a Silent Key in January 2026."
+    log_warn "The original clearskyinstitute.com site is offline."
+    log_warn "Using the community-maintained source mirror with alternate backend support."
     log_info "Installing HamClock (builds from source, ~15 min)..."
-    sudo apt install -y libx11-dev fonts-dejavu unzip || { log_warn "HamClock deps failed"; return 0; }
+
+    sudo apt install -y libx11-dev fonts-dejavu-core unzip || { log_warn "HamClock deps failed"; return 0; }
 
     mkdir -p ~/hamradio
     cd ~/hamradio
 
-    if wget -q --show-progress https://www.clearskyinstitute.com/ham/HamClock/ESPHamClock.zip; then
-        unzip -q -o ESPHamClock.zip
-        cd ESPHamClock
-        log_info "Building HamClock..."
-        if make -j"$(nproc)" hamclock-800x480 2>/dev/null; then
-            sudo cp hamclock-800x480 /usr/local/bin/
-            sudo ln -sf /usr/local/bin/hamclock-800x480 /usr/local/bin/hamclock
-            write_desktop "hamclock.desktop" \
-                "HamClock" "Ham Radio clock and information display" \
-                "/usr/local/bin/hamclock" "hamradio" \
-                "X-HamRadio;X-HamRadio-Utilities;"
-            log_info "HamClock installed! Run: hamclock"
-        else
-            log_warn "HamClock build failed."
-        fi
-        cd ~/hamradio; rm -f ESPHamClock.zip
+    # Community mirror of ESPHamClock source
+    HAMCLOCK_REPO="https://github.com/marshmadnesss/ESPHamClock.git"
+
+    if [ -d "ESPHamClock/.git" ]; then
+        log_info "Updating existing HamClock source..."
+        git -C ESPHamClock pull || true
     else
-        log_warn "HamClock download failed. Manual: https://www.clearskyinstitute.com/ham/HamClock/"
+        git clone --depth=1 "$HAMCLOCK_REPO" ESPHamClock 2>/dev/null || {
+            log_warn "HamClock clone failed."
+            log_info "Community repo: $HAMCLOCK_REPO"
+            return 0
+        }
     fi
+
+    cd ESPHamClock
+    log_info "Building HamClock..."
+    if make -j"$(nproc)" hamclock-800x480 2>/dev/null; then
+        sudo cp hamclock-800x480 /usr/local/bin/
+        sudo ln -sf /usr/local/bin/hamclock-800x480 /usr/local/bin/hamclock
+        write_desktop "hamclock.desktop" \
+            "HamClock" "Ham Radio clock and information display" \
+            "/usr/local/bin/hamclock -b hamclock.com:80" "hamradio" \
+            "X-HamRadio;X-HamRadio-Utilities;"
+        log_info "HamClock installed! Run: hamclock -b hamclock.com:80"
+        log_info "The -b flag points to the community backend (original is offline)."
+    else
+        log_warn "HamClock build failed."
+    fi
+    cd ~/hamradio
 }
 
 ################################################################################
@@ -732,7 +788,7 @@ install_varac() {
     log_info "Installing VarAC (via Wine)..."
     log_warn "VarAC is a Windows application; it runs under Wine on Linux."
     echo ""
-    echo "  Download the VarAC ZIP from: https://www.varac-hamradio.com/downloadlinux"
+    echo "  Download the VarAC ZIP from: https://www.varac-hamradio.com/download"
     echo "  (complete the form, check email, download the ZIP)"
     echo ""
     read -p "  Path to VarAC ZIP (Enter to skip): " VARAC_ZIP
@@ -744,10 +800,12 @@ install_varac() {
     [ ! -f /etc/apt/keyrings/winehq-archive.key ] && \
         sudo wget -qO /etc/apt/keyrings/winehq-archive.key \
             https://dl.winehq.org/wine-builds/winehq.key
-    [ ! -f "/etc/apt/sources.list.d/winehq-${UBUNTU_CODENAME}.sources" ] && \
+    # NOTE: WineHQ may not have published a resolute repo yet — fallback to Ubuntu's wine is safe
+    if [ ! -f "/etc/apt/sources.list.d/winehq-${UBUNTU_CODENAME}.sources" ]; then
         sudo wget -qNP /etc/apt/sources.list.d/ \
             "https://dl.winehq.org/wine-builds/ubuntu/dists/${UBUNTU_CODENAME}/winehq-${UBUNTU_CODENAME}.sources" \
-            2>/dev/null || true
+            2>/dev/null || log_warn "WineHQ repo for ${UBUNTU_CODENAME} not yet published — will use Ubuntu's wine package"
+    fi
     sudo apt update
     sudo apt install -y --install-recommends winehq-stable 2>/dev/null || \
         sudo apt install -y wine winetricks || {
@@ -771,9 +829,15 @@ install_varac() {
         cp "$HOME/.wine/drive_c/windows/Fonts/seguiemj.ttf" "$FONT_DIR/" 2>/dev/null || true
     fi
     if [ ! -f "$FONT_DIR/seguiemj.ttf" ]; then
-        wget -q -O "$FONT_DIR/seguiemj.ttf" \
-            "https://github.com/googlefonts/noto-emoji/raw/main/fonts/NotoColorEmoji.ttf" \
-            2>/dev/null || log_warn "Emoji font download failed"
+        log_warn "Segoe Emoji not found — installing fonts-noto-color-emoji as substitute"
+        sudo apt install -y fonts-noto-color-emoji 2>/dev/null || true
+        NOTO_TTF=$(find /usr/share/fonts -name "NotoColorEmoji*" 2>/dev/null | head -1)
+        if [ -n "$NOTO_TTF" ]; then
+            cp "$NOTO_TTF" "$FONT_DIR/seguiemj.ttf" 2>/dev/null || \
+                log_warn "Could not copy Noto emoji font — VarAC icons may appear as boxes"
+        else
+            log_warn "Noto emoji font not found — VarAC icons may appear as boxes"
+        fi
     fi
 
     # Wine registry tweaks for VARA graphics
@@ -799,7 +863,7 @@ install_varac() {
 
     write_desktop "varac.desktop" \
         "VarAC" "Ham Radio Chat over VARA modem (Wine)" \
-        "env WINEPREFIX=$HOME/.wine_varac WINEDEBUG=-all wine $VARAC_DIR/VarAC.exe" \
+        "env WINEPREFIX=\"$HOME/.wine_varac\" WINEDEBUG=-all wine \"$VARAC_DIR/VarAC.exe\"" \
         "wine" "X-HamRadio;X-HamRadio-Winlink;"
 
     sudo usermod -a -G dialout "$USER"
@@ -818,16 +882,16 @@ install_drats() {
     sudo apt install -y \
         git python3 python3-dev python3-pip python3-venv \
         python3-gi python3-gi-cairo python3-serial \
-        python3-feedparser python3-lxml python3-pil \
+        python3-feedparser python3-lxml python3-pillow \
         python3-simplejson python3-geopy \
-        libcairo2-dev libgirepository1.0-dev \
+        libcairo2-dev libgirepository-2.0-dev \
         libxml2-utils gir1.2-gtk-3.0 gir1.2-gdkpixbuf-2.0 \
         gir1.2-pango-1.0 gir1.2-soup-3.0 \
         aspell aspell-en pkg-config 2>/dev/null || \
     sudo apt install -y \
         git python3 python3-dev python3-pip python3-venv \
         python3-gi python3-gi-cairo python3-serial \
-        libcairo2-dev libgirepository1.0-dev aspell aspell-en pkg-config || \
+        libcairo2-dev libgirepository-2.0-dev aspell aspell-en pkg-config || \
         log_warn "Some D-Rats apt deps failed"
 
     # On Python 3.13+ pyaudio needs portaudio header; try apt first
@@ -900,7 +964,7 @@ install_voacapl() {
         python3-gi python3-gi-cairo \
         python3-matplotlib python3-numpy python3-scipy \
         libgeos-dev libproj-dev proj-data proj-bin \
-        libcairo2-dev libgirepository1.0-dev pkg-config || \
+        libcairo2-dev libgirepository-2.0-dev pkg-config || \
         log_warn "Some voacapl deps failed"
 
     mkdir -p ~/hamradio; cd ~/hamradio
@@ -922,7 +986,8 @@ install_voacapl() {
         make -j"$(nproc)" 2>/dev/null && \
         sudo make install 2>/dev/null || { log_warn "voacapl build failed"; return 1; }
 
-    makeitshfbc 2>/dev/null || log_warn "makeitshfbc failed — run it manually"
+    /usr/local/bin/makeitshfbc 2>/dev/null || makeitshfbc 2>/dev/null || \
+        log_warn "makeitshfbc failed — run it manually after installation"
     log_info "voacapl engine installed."
 
     # ── pythonprop GUI ───────────────────────────────────────────────────────
@@ -1007,9 +1072,9 @@ install_all() {
         echo ""
     done
 
-    echo -e "${CYAN}── Step $((total+1))/$((total+1)): VarAC (skipped in full install) ──${NC}"
+    echo -e "${CYAN}── Note: VarAC skipped in full install (requires manual ZIP download) ──${NC}"
     log_info "VarAC requires a manual download. Run menu option 14 separately."
-    log_info "Download: https://www.varac-hamradio.com/downloadlinux"
+    log_info "Download: https://www.varac-hamradio.com/download"
 
     echo ""
     log_info "All installations complete!"
@@ -1077,7 +1142,7 @@ echo "  • List devices:  aplay -l"
 echo "  • As a service:  sudo systemctl enable --now ardop@$USER"
 echo ""
 echo "VARAC  (requires manual install — menu option 14)"
-echo "  • Download ZIP:  https://www.varac-hamradio.com/downloadlinux"
+echo "  • Download ZIP:  https://www.varac-hamradio.com/download"
 echo "  • Enable 'Linux Compatible Mode' on first launch"
 echo ""
 echo "D-RATS"

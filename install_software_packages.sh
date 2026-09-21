@@ -2,11 +2,11 @@
 
 ################################################################################
 # Ham Radio Package Installer
-# Version 1.0.2  (2026-05-15)
+# Version 1.0.3  (2026-05-15)
 # For Ubuntu 26.04 "Resolute Raccoon" only
 ################################################################################
 
-VERSION="1.0.2"
+VERSION="1.0.3"
 
 # Colors for output
 RED='\033[0;31m'
@@ -207,10 +207,11 @@ show_menu() {
     echo "14. Install VarAC (Wine-based chat over VARA)"
     echo "15. Install D-Rats (D-STAR data communications)"
     echo "16. Install voacapl + pythonprop (HF propagation)"
+    echo "17. Install PlutoSDR Sky R1/R2 (SoapyPlutoSDR + SDRangel)"
     echo ""
     echo "0.  Exit"
     echo ""
-    read -p "Enter your choice [0-16]: " choice
+    read -p "Enter your choice [0-17]: " choice
 }
 
 ################################################################################
@@ -1040,7 +1041,136 @@ LAUNCHER
 }
 
 ################################################################################
-# 1. Install all
+# 17. PlutoSDR Sky R1 / R2
+################################################################################
+
+install_plutosdr() {
+    log_info "Installing PlutoSDR Sky R1/R2 (SoapyPlutoSDR driver + SDRangel)..."
+
+    # ── Step 1: Build dependencies ───────────────────────────────────────────
+    log_info "Installing build dependencies..."
+    sudo apt install -y \
+        build-essential cmake git \
+        libusb-1.0-0-dev pkg-config \
+        soapysdr-tools libsoapysdr-dev || {
+        log_warn "Failed to install PlutoSDR build dependencies"
+        return 1
+    }
+
+    # ── Step 2: Build and install SoapySDR (if not already present) ──────────
+    if ! command -v SoapySDRUtil &>/dev/null; then
+        log_info "SoapySDR not found — building from source..."
+        rm -rf /tmp/SoapySDR
+        git clone --depth=1 https://github.com/pothosware/SoapySDR.git /tmp/SoapySDR || {
+            log_warn "Failed to clone SoapySDR"
+            return 1
+        }
+        mkdir -p /tmp/SoapySDR/build
+        cd /tmp/SoapySDR/build
+        cmake .. -DCMAKE_BUILD_TYPE=Release 2>/dev/null && \
+            make -j"$(nproc)" 2>/dev/null && \
+            sudo make install 2>/dev/null || {
+            log_warn "SoapySDR build failed"
+            cd /tmp; rm -rf /tmp/SoapySDR
+            return 1
+        }
+        cd /tmp; rm -rf /tmp/SoapySDR
+        sudo ldconfig
+        log_info "SoapySDR built and installed."
+    else
+        log_info "SoapySDR already present: $(SoapySDRUtil --info 2>/dev/null | grep 'Lib Version' || echo 'version unknown')"
+    fi
+
+    # ── Step 3: Build and install SoapyPlutoSDR plugin ───────────────────────
+    log_info "Building SoapyPlutoSDR plugin..."
+    rm -rf /tmp/SoapyPlutoSDR
+    git clone --depth=1 https://github.com/pothosware/SoapyPlutoSDR.git \
+        /tmp/SoapyPlutoSDR || {
+        log_warn "Failed to clone SoapyPlutoSDR"
+        return 1
+    }
+    mkdir -p /tmp/SoapyPlutoSDR/build
+    cd /tmp/SoapyPlutoSDR/build
+    cmake .. -DCMAKE_BUILD_TYPE=Release 2>/dev/null && \
+        make -j"$(nproc)" 2>/dev/null && \
+        sudo make install 2>/dev/null || {
+        log_warn "SoapyPlutoSDR build failed"
+        cd /tmp; rm -rf /tmp/SoapyPlutoSDR
+        return 1
+    }
+    cd /tmp; rm -rf /tmp/SoapyPlutoSDR
+    sudo ldconfig
+    log_info "SoapyPlutoSDR plugin installed."
+
+    # ── Step 4: Add user to plugdev for USB access ────────────────────────────
+    sudo usermod -a -G plugdev "$USER" 2>/dev/null || true
+
+    # ── Step 5: Verify driver is visible to SoapySDR ─────────────────────────
+    log_info "Verifying SoapyPlutoSDR driver registration..."
+    if SoapySDRUtil --find="driver=plutosdr" 2>/dev/null | grep -q "plutosdr"; then
+        log_info "PlutoSDR driver detected successfully."
+    else
+        log_warn "PlutoSDR not detected — connect the device via USB and run:"
+        log_warn "  SoapySDRUtil --find=\"driver=plutosdr\""
+        log_warn "  SoapySDRUtil --probe=\"driver=plutosdr\""
+    fi
+
+    # ── Step 6: Install SDRangel via Snap ─────────────────────────────────────
+    log_info "Installing SDRangel via Snap..."
+    if ! command -v snap &>/dev/null; then
+        sudo apt install -y snapd || { log_warn "snapd not available"; }
+    fi
+
+    if command -v snap &>/dev/null; then
+        sudo snap install sdrangel 2>/dev/null || \
+            log_warn "SDRangel snap install failed — try manually: sudo snap install sdrangel"
+
+        log_info "Granting SDRangel snap permissions..."
+        sudo snap connect sdrangel:raw-usb        2>/dev/null || true
+        sudo snap connect sdrangel:network-manager 2>/dev/null || true
+        sudo snap connect sdrangel:hardware-observe 2>/dev/null || true
+        sudo snap connect sdrangel:audio-record    2>/dev/null || true
+        sudo snap connect sdrangel:home            2>/dev/null || true
+
+        write_desktop "sdrangel.desktop" \
+            "SDRangel" "PlutoSDR Sky R1/R2 — wideband SDR receiver and transmitter" \
+            "sdrangel" "audio-input-microphone" \
+            "X-HamRadio;X-HamRadio-SDR;"
+        log_info "SDRangel installed. Launch with: sdrangel"
+    fi
+
+    # ── Step 7: Post-install usage notes ─────────────────────────────────────
+    echo ""
+    log_info "PlutoSDR Sky R1/R2 setup complete!"
+    echo ""
+    echo "  HARDWARE CONNECTION"
+    echo "    Connect device via USB, then attach antenna to RX1."
+    echo ""
+    echo "  VERIFY DETECTION"
+    echo "    SoapySDRUtil --find=\"driver=plutosdr\""
+    echo "    SoapySDRUtil --probe=\"driver=plutosdr\""
+    echo ""
+    echo "  SDRANGEL QUICKSTART (FM reception)"
+    echo "    1. Open SDRangel"
+    echo "    2. Add receiver → select PlutoSDR"
+    echo "    3. Set center frequency: 103.9 MHz, sample rate: 2.5 MHz"
+    echo "    4. Click the purple triangle to start"
+    echo "    5. In channel area: click + → add Broadcast FM demodulator"
+    echo ""
+    echo "  GQRX QUICKSTART (FM reception)"
+    echo "    1. Launch gqrx"
+    echo "    2. Select PlutoSDR as device"
+    echo "       (If not detected: choose Other, enter ip:192.168.2.1)"
+    echo "    3. Frequency: 97400.0 kHz"
+    echo "    4. Filter width: Wide  |  Filter shape: Soft"
+    echo "    5. Mode: WFM Mono (or WFM Stereo for stereo output)"
+    echo "    6. Click play"
+    echo ""
+    log_warn "Log out and back in for USB/plugdev permissions to take effect."
+    return 0
+}
+
+################################################################################
 ################################################################################
 
 install_all() {
@@ -1053,6 +1183,7 @@ install_all() {
         install_aprs
         install_logging
         install_sdr
+        install_plutosdr
         install_morse
         install_antenna_modeling
         install_winlink
@@ -1110,6 +1241,7 @@ while true; do
         14) install_varac           || true ;;
         15) install_drats           || true ;;
         16) install_voacapl         || true ;;
+        17) install_plutosdr        || true ;;
         0)  log_info "Exiting..."; exit 0 ;;
         *)  log_error "Invalid option."; sleep 2 ;;
     esac
@@ -1154,7 +1286,9 @@ echo "  • GUI: voacapgui"
 echo "  • CLI: voacapl ~/itshfbc"
 echo "  • Missing data? Run: makeitshfbc"
 echo ""
-echo "SDR"
+echo "SDR / PLUTOSDR"
+echo "  • Verify PlutoSDR: SoapySDRUtil --find=\"driver=plutosdr\""
+echo "  • GQRX device string (if not auto-detected): ip:192.168.2.1"
 echo "  • Blacklist DVB-T if RTL-SDR isn't detected:"
 echo "    echo 'blacklist dvb_usb_rtl28xxu' | sudo tee /etc/modprobe.d/blacklist-rtl.conf"
 echo "  • SDRPlay drivers: https://www.sdrplay.com/downloads/"

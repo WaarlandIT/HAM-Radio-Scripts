@@ -2,7 +2,7 @@
 
 The bash script installs a large number of HAM-Radio related software packages, organises them into a **Ham Radio** submenu in your desktop applications menu, and writes proper `.desktop` entries for every application.
 
-> **Version 1.0.2 — 2026-05-15**
+> **Version 1.0.3 — 2026-05-15**
 
 ---
 
@@ -14,6 +14,20 @@ The bash script installs a large number of HAM-Radio related software packages, 
 - x86\_64 (amd64), ARM64, or ARMv7 CPU architecture
 
 > The script will warn you and ask for confirmation if it detects a non-26.04 system.
+
+---
+
+## Companion scripts
+
+Two helper scripts are provided alongside the installer:
+
+| Script | Purpose |
+| --- | --- |
+| `check_links.sh` | Verifies every download URL and git repository used by the installer |
+| `check_packages.sh` | Checks every required apt package against the 26.04 repos before installing |
+| `plutosdr_sky_r1r2_setup.md` | Step-by-step setup guide for the PlutoSDR Sky R1/R2 (SoapySDR, SDRangel, GQRX) |
+
+Run these first to spot any issues on your specific machine before committing to the full install.
 
 ---
 
@@ -48,7 +62,7 @@ After entering your details, the main menu appears:
 
 ```
 ================================================
-   Ham Radio Software Installer v1.0.2
+   Ham Radio Software Installer v1.0.3
    Ubuntu resolute edition
 ================================================
 Callsign: PA3RPW | Grid: JO22
@@ -70,6 +84,7 @@ Callsign: PA3RPW | Grid: JO22
 14. Install VarAC (Wine-based chat over VARA)
 15. Install D-Rats (D-STAR data communications)
 16. Install voacapl + pythonprop (HF propagation)
+17. Install PlutoSDR Sky R1/R2 (SoapyPlutoSDR + SDRangel)
 
 0.  Exit
 ```
@@ -133,7 +148,9 @@ VOACAPL / VOACAP GUI
   • CLI: voacapl ~/itshfbc
   • Missing data? Run: makeitshfbc
 
-SDR
+SDR / PLUTOSDR
+  • Verify PlutoSDR: SoapySDRUtil --find="driver=plutosdr"
+  • GQRX device string (if not auto-detected): ip:192.168.2.1
   • Blacklist DVB-T if RTL-SDR isn't detected:
     echo 'blacklist dvb_usb_rtl28xxu' | sudo tee /etc/modprobe.d/blacklist-rtl.conf
   • SDRPlay drivers: https://www.sdrplay.com/downloads/
@@ -155,6 +172,7 @@ SDR
   echo 'blacklist dvb_usb_rtl28xxu' | sudo tee /etc/modprobe.d/blacklist-rtl.conf
   ```
 - **HamClock**: the original creator (WB0OEW) became a Silent Key in January 2026 and the original site is offline. The installer uses the community-maintained source fork and points HamClock at the community backend (`hamclock.com:80`).
+- **PlutoSDR Sky R1/R2**: after installation, log out and back in for `plugdev` USB permissions. If GQRX does not auto-detect the device, select *Other* in the device dialog and enter `ip:192.168.2.1`. See `plutosdr_sky_r1r2_setup.md` for full quickstart instructions.
 
 ---
 
@@ -201,6 +219,8 @@ All applications appear under a **Ham Radio** submenu in your desktop applicatio
 | [Quisk](https://james.ahlstrom.name/quisk/) | SDR transceiver software with transmit support for compatible hardware. |
 | [CuteSDR](https://sourceforge.net/projects/cutesdr/) | Simple Qt-based SDR receiver application. |
 | [SoapySDR](https://github.com/pothosware/SoapySDR) | Hardware abstraction layer providing a unified API across SDR devices. |
+| [SoapyPlutoSDR](https://github.com/pothosware/SoapyPlutoSDR) | SoapySDR plugin for the PlutoSDR Sky R1/R2. Built from source. |
+| [SDRangel](https://github.com/f4exb/sdrangel) | Full-featured SDR receiver and transmitter with PlutoSDR support. Installed via Snap (option 17). |
 | [RTL-SDR](https://osmocom.org/projects/rtl-sdr) | Driver and utilities for RTL2832U-based DVB-T dongles used as wideband receivers. |
 
 > **Note:** SDRPlay RSP drivers must be downloaded separately from [sdrplay.com/downloads](https://www.sdrplay.com/downloads/).
@@ -289,6 +309,17 @@ All applications appear under a **Ham Radio** submenu in your desktop applicatio
 
 ---
 
+### PlutoSDR Sky R1/R2
+
+| Component | Description |
+| --- | --- |
+| [SoapyPlutoSDR](https://github.com/pothosware/SoapyPlutoSDR) | SoapySDR plugin that exposes the PlutoSDR Sky R1/R2 to all SoapySDR-compatible applications. Built from source. |
+| [SDRangel](https://github.com/f4exb/sdrangel) | Full-featured wideband SDR receiver and transmitter. Installed via Snap with all required USB, audio, and hardware permissions configured automatically. |
+
+> Connect the device via USB, attach the antenna to **RX1**, then verify detection with `SoapySDRUtil --find="driver=plutosdr"`. See `plutosdr_sky_r1r2_setup.md` for full quickstart instructions for both SDRangel and GQRX.
+
+---
+
 ### Cluster / Server
 
 | Application | Description |
@@ -310,6 +341,7 @@ All applications appear under a **Ham Radio** submenu in your desktop applicatio
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.0.3 | 2026-05-15 | Added PlutoSDR Sky R1/R2 support (option 17): SoapyPlutoSDR built from source, SDRangel via Snap with full permission config, GQRX fallback device string, quickstart notes in post-install summary |
 | 1.0.2 | 2026-05-15 | Bug fixes: explicit `/tmp/` paths for all downloaded packages, `cd` back after HamClock build, `makeitshfbc` called with full path, VarAC `.desktop` path quoting, `install_all` step counter corrected, GridTracker curl guard added |
 | 1.0.1 | 2026-05-15 | OS check restricted to 26.04 / resolute only; corrected fccexam/hamexam availability; FLArq built from fldigi tarball; HamClock switched to community fork; VarAC URL corrected to `/download`; WineHQ resolute repo note added; all link and package checks passing |
 | 1.0.0 | 2026-05-14 | Initial release for Ubuntu 26.04 "Resolute Raccoon". Complete desktop menu integration, dynamic version resolution for GridTracker/JS8Call/Pat/ardopcf, 26.04 package name updates |

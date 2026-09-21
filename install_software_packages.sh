@@ -2,11 +2,11 @@
 
 ################################################################################
 # Ham Radio Package Installer
-# Version 1.0.3  (2026-05-15)
+# Version 1.0.4  (2026-05-15)
 # For Ubuntu 26.04 "Resolute Raccoon" only
 ################################################################################
 
-VERSION="1.0.3"
+VERSION="1.0.4"
 
 # Colors for output
 RED='\033[0;31m'
@@ -208,10 +208,11 @@ show_menu() {
     echo "15. Install D-Rats (D-STAR data communications)"
     echo "16. Install voacapl + pythonprop (HF propagation)"
     echo "17. Install PlutoSDR Sky R1/R2 (SoapyPlutoSDR + SDRangel)"
+    echo "18. Install DATV-Linux (DVB-S2 transmitter)"
     echo ""
     echo "0.  Exit"
     echo ""
-    read -p "Enter your choice [0-17]: " choice
+    read -p "Enter your choice [0-18]: " choice
 }
 
 ################################################################################
@@ -1171,6 +1172,126 @@ install_plutosdr() {
 }
 
 ################################################################################
+# 18. DATV-Linux (DVB-S2 transmitter)
+################################################################################
+
+install_datv() {
+    log_info "Installing DATV-Linux (DVB-S2 transmitter for amateur radio)..."
+
+    # ── Step 1: apt dependencies ──────────────────────────────────────────────
+    log_info "Installing DATV-Linux dependencies..."
+    sudo apt install -y \
+        build-essential cmake pkg-config git \
+        libhackrf-dev hackrf \
+        libiio-dev libiio-utils \
+        libusb-1.0-0-dev \
+        libsoapysdr-dev soapysdr-tools \
+        ffmpeg \
+        python3 python3-pyqt6 python3-pip || {
+        log_warn "Some DATV-Linux apt dependencies failed — build may still succeed"
+    }
+
+    # LimeSDR support — all three packages confirmed on 26.04 resolute (universe)
+    sudo apt install -y soapysdr-module-lms7 limesuite limesuite-udev 2>/dev/null || \
+        log_warn "LimeSDR support packages not available — HackRF and Pluto will still work"
+
+    # ── Step 2: Install Python requirements ───────────────────────────────────
+    if ! python3 -c "import PyQt6" &>/dev/null; then
+        log_info "Installing PyQt6 via pip into user space..."
+        python3 -m pip install --user PyQt6 2>/dev/null || \
+            log_warn "PyQt6 pip install failed — GUI may not launch"
+    fi
+
+    # ── Step 3: Clone repository ──────────────────────────────────────────────
+    DATV_DIR="$HOME/hamradio/DATV-Linux"
+    log_info "Cloning DATV-Linux into $DATV_DIR..."
+
+    if [ -d "$DATV_DIR/.git" ]; then
+        log_info "DATV-Linux already cloned — pulling latest..."
+        git -C "$DATV_DIR" pull || log_warn "git pull failed, using existing copy"
+    else
+        git clone --depth=1 https://github.com/OD5TB/DATV-Linux.git \
+            "$DATV_DIR" || {
+            log_warn "DATV-Linux clone failed"
+            log_info "Manual: https://github.com/OD5TB/DATV-Linux"
+            return 1
+        }
+    fi
+
+    # ── Step 4: Build the dvbs2_tx backend ────────────────────────────────────
+    log_info "Building DATV-Linux dvbs2_tx backend..."
+    cd "$DATV_DIR"
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release 2>/dev/null && \
+        cmake --build build -j"$(nproc)" 2>/dev/null || {
+        log_warn "DATV-Linux build failed — check cmake output above"
+        cd ~
+        return 1
+    }
+
+    # Copy binary next to the GUI (expected by dvbs2_gui.py)
+    cp build/dvbs2_tx "$DATV_DIR/dvbs2_tx" 2>/dev/null || true
+
+    # Install system-wide
+    sudo cmake --install build 2>/dev/null || \
+        sudo install -m 755 build/dvbs2_tx /usr/local/bin/dvbs2_tx 2>/dev/null || \
+        log_warn "System-wide install failed — run from $DATV_DIR directly"
+
+    cd ~
+
+    # ── Step 5: Check Python dependencies ────────────────────────────────────
+    if [ -f "$DATV_DIR/check_dependencies.py" ]; then
+        log_info "Checking DATV-Linux Python dependencies..."
+        python3 "$DATV_DIR/check_dependencies.py" 2>/dev/null || \
+            log_warn "Some Python dependencies missing — see output above"
+    fi
+
+    if [ -f "$DATV_DIR/requirements.txt" ]; then
+        python3 -m pip install --user -r "$DATV_DIR/requirements.txt" \
+            2>/dev/null || log_warn "requirements.txt install had errors"
+    fi
+
+    # ── Step 6: Launcher script ───────────────────────────────────────────────
+    mkdir -p "$HOME/.local/bin"
+    cat > "$HOME/.local/bin/datv-linux" <<LAUNCHER
+#!/bin/bash
+cd "$DATV_DIR"
+exec python3 "$DATV_DIR/dvbs2_gui.py" "\$@"
+LAUNCHER
+    chmod +x "$HOME/.local/bin/datv-linux"
+
+    grep -q '\.local/bin' "$HOME/.bashrc" || \
+        echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+
+    # ── Step 7: Desktop entry ─────────────────────────────────────────────────
+    write_desktop "datv-linux.desktop" \
+        "DATV-Linux" "DVB-S2 amateur television transmitter" \
+        "$HOME/.local/bin/datv-linux" "applications-multimedia" \
+        "X-HamRadio;X-HamRadio-SDR;"
+
+    # ── Step 8: Add user to plugdev for SDR USB access ────────────────────────
+    sudo usermod -a -G plugdev "$USER" 2>/dev/null || true
+
+    log_info "DATV-Linux installed!"
+    echo ""
+    echo "  Run GUI:      datv-linux"
+    echo "  Source dir:   $DATV_DIR"
+    echo "  User manual:  $DATV_DIR/DATV-Linux_User_Manual.pdf"
+    echo "  Update later: git -C $DATV_DIR pull && cmake --build $DATV_DIR/build -j\$(nproc)"
+    echo ""
+    echo "  SUPPORTED HARDWARE"
+    echo "    HackRF One, LimeSDR Mini, ADALM Pluto / Pluto+ (stock firmware)"
+    echo "    PlutoDVB2 F5OEO and Pluto F5UII firmware paths also supported"
+    echo ""
+    echo "  QUICK CLI TEST"
+    echo "    ffmpeg -re -i video.ts -f mpegts - | \\"
+    echo "      dvbs2_tx QPSK_1/2_S 2407500000 250000 10 0 0.20 1 0 pluto ip:192.168.2.1"
+    echo ""
+    log_warn "Log out and back in for USB/plugdev permissions to take effect."
+    log_warn "Read DATV-Linux_User_Manual.pdf before transmitting on-air."
+    return 0
+}
+
+################################################################################
 ################################################################################
 
 install_all() {
@@ -1184,6 +1305,7 @@ install_all() {
         install_logging
         install_sdr
         install_plutosdr
+        install_datv
         install_morse
         install_antenna_modeling
         install_winlink
@@ -1242,6 +1364,7 @@ while true; do
         15) install_drats           || true ;;
         16) install_voacapl         || true ;;
         17) install_plutosdr        || true ;;
+        18) install_datv            || true ;;
         0)  log_info "Exiting..."; exit 0 ;;
         *)  log_error "Invalid option."; sleep 2 ;;
     esac
@@ -1285,6 +1408,12 @@ echo "VOACAPL / VOACAP GUI"
 echo "  • GUI: voacapgui"
 echo "  • CLI: voacapl ~/itshfbc"
 echo "  • Missing data? Run: makeitshfbc"
+echo ""
+echo "DATV-LINUX"
+echo "  • Run GUI:    datv-linux"
+echo "  • Manual:     ~/hamradio/DATV-Linux/DATV-Linux_User_Manual.pdf"
+echo "  • Update:     git -C ~/hamradio/DATV-Linux pull"
+echo "  • Supported:  HackRF, LimeSDR Mini, ADALM Pluto/Pluto+ (stock firmware)"
 echo ""
 echo "SDR / PLUTOSDR"
 echo "  • Verify PlutoSDR: SoapySDRUtil --find=\"driver=plutosdr\""

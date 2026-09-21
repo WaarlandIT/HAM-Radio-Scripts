@@ -2,11 +2,11 @@
 
 ################################################################################
 # Ham Radio Package Installer
-# Version 1.0.4  (2026-05-15)
+# Version 1.0.5  (2026-05-15)
 # For Ubuntu 26.04 "Resolute Raccoon" only
 ################################################################################
 
-VERSION="1.0.4"
+VERSION="1.0.5"
 
 # Colors for output
 RED='\033[0;31m'
@@ -1042,6 +1042,226 @@ LAUNCHER
 }
 
 ################################################################################
+# Config file generators
+################################################################################
+
+# SDRangel stores settings in ~/.config/f4exb/SDRangel.conf (Qt INI format).
+# We write a minimal preset that pre-selects PlutoSDR at 103.9 MHz with WFM.
+generate_sdrangel_config() {
+    log_info "Generating SDRangel PlutoSDR preset config..."
+    local cfg_dir="$HOME/.config/f4exb"
+    mkdir -p "$cfg_dir"
+    local cfg="$cfg_dir/SDRangel.conf"
+
+    # Only write if file doesn't exist yet — don't overwrite user's settings
+    if [ -f "$cfg" ]; then
+        log_info "SDRangel config already exists at $cfg — skipping (not overwriting)"
+        return 0
+    fi
+
+    cat > "$cfg" <<EOF
+[General]
+firstStart=false
+callsign=${CALLSIGN}
+location=${GRID_SQUARE}
+
+[Presets]
+presetCount=1
+preset\\1\\centerFrequency=103900000
+preset\\1\\name=PlutoSDR FM ${CALLSIGN}
+preset\\1\\group=Ham Radio
+preset\\1\\description=PlutoSDR Sky R1/R2 FM receive preset — ${CALLSIGN} ${GRID_SQUARE}
+
+[PlutoSDR]
+devAddr=ip:192.168.2.1
+centerFrequency=103900000
+sampleRate=2500000
+log2Decim=0
+lpfBW=2500000
+gain=50
+antennaPath=A_BALANCED
+
+[WFMDemodulator]
+afBandwidth=15000
+rfBandwidth=200000
+volume=5
+squelch=-100
+audioDeviceName=default
+EOF
+
+    log_info "SDRangel config written to $cfg"
+    log_info "Pre-configured: PlutoSDR @ 103.9 MHz, 2.5 MHz SR, WFM"
+}
+
+# DATV-Linux uses QSettings('OpenAI','DATV-Linux') → ~/.config/OpenAI/DATV-Linux.conf
+generate_datv_config() {
+    log_info "Generating DATV-Linux QSettings config..."
+    local cfg_dir="$HOME/.config/OpenAI"
+    mkdir -p "$cfg_dir"
+    local cfg="$cfg_dir/DATV-Linux.conf"
+
+    if [ -f "$cfg" ]; then
+        log_info "DATV-Linux config already exists at $cfg — skipping (not overwriting)"
+        return 0
+    fi
+
+    # QSettings INI format: key=value, group headers in [brackets]
+    cat > "$cfg" <<EOF
+[General]
+callsign=${CALLSIGN}
+window_preset=Standard
+
+[DVB]
+modulation=QPSK
+fec=1/2
+frame_size=Normal (64800 bits)
+symbol_rate=250
+rolloff=0.20
+pilots=true
+gold_code=0
+
+[RF]
+device=AdalmPluto
+frequency_mhz=2407.500
+tx_level=0
+amp_enabled=false
+pluto_ip=192.168.2.1
+pluto_topic=${CALLSIGN}
+
+[Source]
+source_type=Video File
+file_path=
+stream_url=udp://0.0.0.0:23000?fifo_size=1000000&overrun_nonfatal=1
+
+[Audio]
+audio_enabled=true
+audio_bitrate=64
+
+[Video]
+video_codec=H.264
+video_bitrate=480
+resolution=720x576
+framerate=25
+EOF
+
+    log_info "DATV-Linux config written to $cfg"
+    log_info "Pre-configured: PlutoSDR, 2407.5 MHz, QPSK 1/2, 250 kS/s, callsign ${CALLSIGN}"
+}
+
+# Write a standalone install script for PlutoSDR Sky R1/R2
+write_plutosdr_install_script() {
+    local out="$HOME/hamradio/install_plutosdr.sh"
+    log_info "Writing standalone PlutoSDR install script to $out..."
+    cat > "$out" <<'PLUTO_EOF'
+#!/bin/bash
+################################################################################
+# Standalone PlutoSky R1/R2 Setup Script for Ubuntu 26.04 "Resolute Raccoon"
+# Installs: libiio, SoapySDR, SoapyPlutoSDR, SDRangel (Snap)
+# Reference: https://blog.opensourcesdrlab.com/archives/PlutoSky-R1
+################################################################################
+set -euo pipefail
+
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+log_info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
+log_warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+if [[ $EUID -eq 0 ]]; then
+    log_error "Do not run as root. Run as a regular user with sudo privileges."
+    exit 1
+fi
+
+log_info "PlutoSky R1/R2 setup starting..."
+
+# ── 1. Base dependencies + libiio ────────────────────────────────────────────
+log_info "Installing dependencies and libiio..."
+sudo apt update
+sudo apt install -y \
+    build-essential cmake git \
+    libusb-1.0-0-dev pkg-config \
+    libiio-dev libiio-utils \
+    libsoapysdr-dev soapysdr-tools
+
+# ── 2. SoapySDR (build from source if not present) ───────────────────────────
+if ! command -v SoapySDRUtil &>/dev/null; then
+    log_info "Building SoapySDR from source..."
+    rm -rf /tmp/SoapySDR
+    git clone --depth=1 https://github.com/pothosware/SoapySDR.git /tmp/SoapySDR
+    cmake -S /tmp/SoapySDR -B /tmp/SoapySDR/build -DCMAKE_BUILD_TYPE=Release
+    cmake --build /tmp/SoapySDR/build -j"$(nproc)"
+    sudo cmake --install /tmp/SoapySDR/build
+    sudo ldconfig
+    rm -rf /tmp/SoapySDR
+    log_info "SoapySDR installed: $(SoapySDRUtil --info 2>/dev/null | grep 'Lib Version' || echo 'ok')"
+else
+    log_info "SoapySDR already present."
+fi
+
+# ── 3. SoapyPlutoSDR plugin ───────────────────────────────────────────────────
+log_info "Building SoapyPlutoSDR plugin..."
+rm -rf /tmp/SoapyPlutoSDR
+git clone --depth=1 https://github.com/pothosware/SoapyPlutoSDR.git /tmp/SoapyPlutoSDR
+cmake -S /tmp/SoapyPlutoSDR -B /tmp/SoapyPlutoSDR/build -DCMAKE_BUILD_TYPE=Release
+cmake --build /tmp/SoapyPlutoSDR/build -j"$(nproc)"
+sudo cmake --install /tmp/SoapyPlutoSDR/build
+sudo ldconfig
+rm -rf /tmp/SoapyPlutoSDR
+log_info "SoapyPlutoSDR installed."
+
+# ── 4. plugdev group ──────────────────────────────────────────────────────────
+sudo usermod -a -G plugdev "$USER"
+log_warn "Log out and back in for USB permissions to take effect."
+
+# ── 5. Verify (requires device to be connected) ───────────────────────────────
+log_info "Verifying SoapySDR sees the PlutoSDR driver (connect device first):"
+echo ""
+echo "  SoapySDRUtil --find=\"driver=plutosdr\""
+echo "  SoapySDRUtil --probe=\"driver=plutosdr\""
+echo "  iio_info -u ip:192.168.2.1"
+echo ""
+
+# ── 6. SDRangel via Snap ──────────────────────────────────────────────────────
+if ! command -v snap &>/dev/null; then
+    sudo apt install -y snapd || log_warn "snapd not available"
+fi
+
+if command -v snap &>/dev/null; then
+    log_info "Installing SDRangel via Snap..."
+    sudo snap install sdrangel || log_warn "Snap install failed — try: sudo snap install sdrangel"
+    log_info "Granting SDRangel Snap permissions..."
+    sudo snap connect sdrangel:raw-usb         || true
+    sudo snap connect sdrangel:network-manager  || true
+    sudo snap connect sdrangel:hardware-observe || true
+    sudo snap connect sdrangel:audio-record     || true
+    sudo snap connect sdrangel:home             || true
+    log_info "SDRangel installed. Launch with: sdrangel"
+fi
+
+log_info ""
+log_info "PlutoSky R1/R2 setup complete!"
+echo ""
+echo "  QUICK START — SDRangel FM reception:"
+echo "    1. Connect PlutoSky via USB, attach antenna to RX1"
+echo "    2. Run: sdrangel"
+echo "    3. Add receiver → select PlutoSDR"
+echo "    4. Set center freq: 103.9 MHz, sample rate: 2.5 MHz"
+echo "    5. Click purple triangle → add Broadcast FM demodulator"
+echo ""
+echo "  QUICK START — GQRX FM reception:"
+echo "    1. Run: gqrx"
+echo "    2. Select PlutoSDR (or Other → ip:192.168.2.1)"
+echo "    3. Freq: 97400.0 kHz | Filter: Wide | Mode: WFM Mono"
+echo "    4. Click play"
+echo ""
+echo "  VERIFY DEVICE:"
+echo "    iio_info -u ip:192.168.2.1"
+echo "    SoapySDRUtil --find=\"driver=plutosdr\""
+PLUTO_EOF
+    chmod +x "$out"
+    log_info "Standalone script written: $out"
+}
+
+################################################################################
 # 17. PlutoSDR Sky R1 / R2
 ################################################################################
 
@@ -1053,10 +1273,9 @@ install_plutosdr() {
     sudo apt install -y \
         build-essential cmake git \
         libusb-1.0-0-dev pkg-config \
-        soapysdr-tools libsoapysdr-dev || {
-        log_warn "Failed to install PlutoSDR build dependencies"
-        return 1
-    }
+        libiio-dev libiio-utils \
+        soapysdr-tools libsoapysdr-dev || \
+        log_warn "Some PlutoSDR build dependencies failed — continuing anyway"
 
     # ── Step 2: Build and install SoapySDR (if not already present) ──────────
     if ! command -v SoapySDRUtil &>/dev/null; then
@@ -1140,7 +1359,13 @@ install_plutosdr() {
         log_info "SDRangel installed. Launch with: sdrangel"
     fi
 
-    # ── Step 7: Post-install usage notes ─────────────────────────────────────
+    # ── Step 7: Generate SDRangel preset config for PlutoSDR ─────────────────
+    generate_sdrangel_config
+
+    # ── Step 8: Write standalone install script ───────────────────────────────
+    write_plutosdr_install_script
+
+    # ── Step 9: Post-install usage notes ─────────────────────────────────────
     echo ""
     log_info "PlutoSDR Sky R1/R2 setup complete!"
     echo ""
@@ -1268,7 +1493,10 @@ LAUNCHER
         "$HOME/.local/bin/datv-linux" "applications-multimedia" \
         "X-HamRadio;X-HamRadio-SDR;"
 
-    # ── Step 8: Add user to plugdev for SDR USB access ────────────────────────
+    # ── Step 8: Generate DATV-Linux QSettings config ─────────────────────────
+    generate_datv_config
+
+    # ── Step 8b: Add user to plugdev for SDR USB access ──────────────────────
     sudo usermod -a -G plugdev "$USER" 2>/dev/null || true
 
     log_info "DATV-Linux installed!"

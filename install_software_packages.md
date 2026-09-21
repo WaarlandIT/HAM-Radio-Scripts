@@ -2,7 +2,7 @@
 
 The bash script installs a large number of HAM-Radio related software packages, organises them into a **Ham Radio** submenu in your desktop applications menu, and writes proper `.desktop` entries for every application.
 
-> **Version 1.0.3 — 2026-05-15**
+> **Version 1.0.4 — 2026-05-15**
 
 ---
 
@@ -62,7 +62,7 @@ After entering your details, the main menu appears:
 
 ```
 ================================================
-   Ham Radio Software Installer v1.0.3
+   Ham Radio Software Installer v1.0.4
    Ubuntu resolute edition
 ================================================
 Callsign: PA3RPW | Grid: JO22
@@ -85,6 +85,7 @@ Callsign: PA3RPW | Grid: JO22
 15. Install D-Rats (D-STAR data communications)
 16. Install voacapl + pythonprop (HF propagation)
 17. Install PlutoSDR Sky R1/R2 (SoapyPlutoSDR + SDRangel)
+18. Install DATV-Linux (DVB-S2 transmitter)
 
 0.  Exit
 ```
@@ -173,6 +174,7 @@ SDR / PLUTOSDR
   ```
 - **HamClock**: the original creator (WB0OEW) became a Silent Key in January 2026 and the original site is offline. The installer uses the community-maintained source fork and points HamClock at the community backend (`hamclock.com:80`).
 - **PlutoSDR Sky R1/R2**: after installation, log out and back in for `plugdev` USB permissions. If GQRX does not auto-detect the device, select *Other* in the device dialog and enter `ip:192.168.2.1`. See `plutosdr_sky_r1r2_setup.md` for full quickstart instructions.
+- **DATV-Linux**: requires HackRF, LimeSDR Mini, or ADALM Pluto/Pluto+ (stock firmware — no custom firmware required). Read `DATV-Linux_User_Manual.pdf` before transmitting on-air.
 
 ---
 
@@ -221,6 +223,7 @@ All applications appear under a **Ham Radio** submenu in your desktop applicatio
 | [SoapySDR](https://github.com/pothosware/SoapySDR) | Hardware abstraction layer providing a unified API across SDR devices. |
 | [SoapyPlutoSDR](https://github.com/pothosware/SoapyPlutoSDR) | SoapySDR plugin for the PlutoSDR Sky R1/R2. Built from source. |
 | [SDRangel](https://github.com/f4exb/sdrangel) | Full-featured SDR receiver and transmitter with PlutoSDR support. Installed via Snap (option 17). |
+| [DATV-Linux](https://github.com/OD5TB/DATV-Linux) | DVB-S2 amateur television transmitter. Supports HackRF, LimeSDR Mini, and ADALM Pluto/Pluto+ (stock firmware). Built from source (option 18). |
 | [RTL-SDR](https://osmocom.org/projects/rtl-sdr) | Driver and utilities for RTL2832U-based DVB-T dongles used as wideband receivers. |
 
 > **Note:** SDRPlay RSP drivers must be downloaded separately from [sdrplay.com/downloads](https://www.sdrplay.com/downloads/).
@@ -320,6 +323,20 @@ All applications appear under a **Ham Radio** submenu in your desktop applicatio
 
 ---
 
+### DATV-Linux (DVB-S2 Transmitter)
+
+| Component | Description |
+| --- | --- |
+| [DATV-Linux](https://github.com/OD5TB/DATV-Linux) | Linux-based DVB-S2 transmitter for amateur television (DATV). Combines a Python/PyQt6 GUI with a C++ backend (`dvbs2_tx`) that implements the full DVB-S2 transmit chain in software: BBFRAME preparation, BCH/LDPC FEC, PL framing, constellation mapping, pulse shaping, and IQ streaming to the SDR. |
+
+Supported SDR hardware: **HackRF One**, **LimeSDR Mini** (via SoapySDR), **ADALM Pluto / Pluto+** (stock manufacturer firmware — no custom firmware required), **PlutoDVB2 F5OEO** and **Pluto F5UII** firmware paths.
+
+Supported sources: video file, webcam/camera, external FFmpeg stream.
+
+> Read `DATV-Linux_User_Manual.pdf` (in `~/hamradio/DATV-Linux/`) before transmitting on-air. Run `datv-linux` to launch the GUI, or update with `git -C ~/hamradio/DATV-Linux pull`.
+
+---
+
 ### Cluster / Server
 
 | Application | Description |
@@ -341,6 +358,7 @@ All applications appear under a **Ham Radio** submenu in your desktop applicatio
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.0.4 | 2026-05-15 | Added DATV-Linux (option 18): DVB-S2 amateur TV transmitter supporting HackRF, LimeSDR Mini, and ADALM Pluto/Pluto+ (stock firmware); cmake build, PyQt6 GUI launcher, desktop entry |
 | 1.0.3 | 2026-05-15 | Added PlutoSDR Sky R1/R2 support (option 17): SoapyPlutoSDR built from source, SDRangel via Snap with full permission config, GQRX fallback device string, quickstart notes in post-install summary |
 | 1.0.2 | 2026-05-15 | Bug fixes: explicit `/tmp/` paths for all downloaded packages, `cd` back after HamClock build, `makeitshfbc` called with full path, VarAC `.desktop` path quoting, `install_all` step counter corrected, GridTracker curl guard added |
 | 1.0.1 | 2026-05-15 | OS check restricted to 26.04 / resolute only; corrected fccexam/hamexam availability; FLArq built from fldigi tarball; HamClock switched to community fork; VarAC URL corrected to `/download`; WineHQ resolute repo note added; all link and package checks passing |

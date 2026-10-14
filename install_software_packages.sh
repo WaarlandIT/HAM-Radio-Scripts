@@ -2,11 +2,11 @@
 
 ################################################################################
 # Ham Radio Package Installer
-# Version 1.0.5  (2026-05-15)
+# Version 1.0.7  (2026-10-14)
 # For Ubuntu 26.04 "Resolute Raccoon" only
 ################################################################################
 
-VERSION="1.0.5"
+VERSION="1.0.7"
 
 # Colors for output
 RED='\033[0;31m'
@@ -22,17 +22,21 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # XDG directories
 APPS_DIR="$HOME/.local/share/applications"
 DIRS_DIR="$HOME/.local/share/desktop-directories"
+MENU_XML_DIR="$HOME/.config/menus/applications-merged"
+MENU_XML="$MENU_XML_DIR/hamradio.menu"
 
 ################################################################################
 # Desktop menu helpers
 ################################################################################
 
 install_desktop_directories() {
-    mkdir -p "$APPS_DIR" "$DIRS_DIR"
+    mkdir -p "$APPS_DIR" "$DIRS_DIR" "$MENU_XML_DIR"
 
+    # Helper — write a valid XDG .directory file (Version=1.0 is required)
     write_dir_file() {
         cat > "$DIRS_DIR/$1" <<EOF
 [Desktop Entry]
+Version=1.0
 Type=Directory
 Name=$2
 Icon=$3
@@ -40,31 +44,150 @@ Comment=$4
 EOF
     }
 
-    write_dir_file "hamradio.directory"          "Ham Radio"        "applications-hamradio"   "Amateur radio applications"
-    write_dir_file "hamradio-digitalmodes.directory" "Digital Modes" "network-wireless"        "FT8, PSK, SSTV, etc."
-    write_dir_file "hamradio-logging.directory"  "Logging"          "x-office-address-book"   "QSO logging applications"
-    write_dir_file "hamradio-sdr.directory"      "SDR"              "audio-input-microphone"  "Software Defined Radio"
-    write_dir_file "hamradio-aprs.directory"     "APRS"             "network-transmit-receive" "APRS and packet radio"
-    write_dir_file "hamradio-satellite.directory" "Satellite"       "weather-clear-night"     "Satellite tracking"
-    write_dir_file "hamradio-winlink.directory"  "Winlink"          "mail-send-receive"       "Winlink email over radio"
-    write_dir_file "hamradio-antenna.directory"  "Antenna Modeling" "applications-engineering" "Antenna design and modeling"
-    write_dir_file "hamradio-morse.directory"    "Morse Code"       "audio-speakers"          "Morse code training and tools"
-    write_dir_file "hamradio-utilities.directory" "Utilities"       "applications-utilities"  "General ham radio utilities"
+    write_dir_file "hamradio.directory"              "Ham Radio"        "applications-hamradio"    "Amateur radio applications"
+    write_dir_file "hamradio-digitalmodes.directory" "Digital Modes"    "network-wireless"         "FT8, PSK, SSTV, etc."
+    write_dir_file "hamradio-logging.directory"      "Logging"          "x-office-address-book"    "QSO logging applications"
+    write_dir_file "hamradio-sdr.directory"          "SDR"              "audio-input-microphone"   "Software Defined Radio"
+    write_dir_file "hamradio-aprs.directory"         "APRS"             "network-transmit-receive" "APRS and packet radio"
+    write_dir_file "hamradio-satellite.directory"    "Satellite"        "weather-clear-night"      "Satellite tracking"
+    write_dir_file "hamradio-winlink.directory"      "Winlink"          "mail-send-receive"        "Winlink email over radio"
+    write_dir_file "hamradio-antenna.directory"      "Antenna Modeling" "applications-engineering" "Antenna design and modeling"
+    write_dir_file "hamradio-morse.directory"        "Morse Code"       "audio-speakers"           "Morse code training and tools"
+    write_dir_file "hamradio-utilities.directory"    "Utilities"        "applications-utilities"   "General ham radio utilities"
 
-    xdg-desktop-menu install --novendor \
-        "$DIRS_DIR/hamradio.directory" \
-        "$DIRS_DIR/hamradio-digitalmodes.directory" \
-        "$DIRS_DIR/hamradio-logging.directory" \
-        "$DIRS_DIR/hamradio-sdr.directory" \
-        "$DIRS_DIR/hamradio-aprs.directory" \
-        "$DIRS_DIR/hamradio-satellite.directory" \
-        "$DIRS_DIR/hamradio-winlink.directory" \
-        "$DIRS_DIR/hamradio-antenna.directory" \
-        "$DIRS_DIR/hamradio-morse.directory" \
-        "$DIRS_DIR/hamradio-utilities.directory" \
-        2>/dev/null || true
+    # Write the XDG menu XML.
+    # Subfolders are listed BEFORE the parent's <OnlyUnallocated/> catch-all so
+    # each subfolder claims its items before the parent can pull them up.
+    # NOTE: xdg-desktop-menu forceupdate is intentionally NOT called — it creates
+    # an empty xdg-desktop-menu-dummy.menu that blocks kbuildsycoca6 parsing.
+    cat > "$MENU_XML" <<'MENUEOF'
+<!DOCTYPE Menu PUBLIC "-//freedesktop//DTD Menu 1.0//EN"
+  "http://www.freedesktop.org/standards/menu-spec/menu-1.0.dtd">
+<Menu>
+  <Name>Applications</Name>
+
+  <Menu>
+    <Name>Ham Radio</Name>
+    <Directory>hamradio.directory</Directory>
+
+    <Menu>
+      <Name>Digital Modes</Name>
+      <Directory>hamradio-digitalmodes.directory</Directory>
+      <Include><Category>X-HamRadio-DigitalModes</Category></Include>
+    </Menu>
+
+    <Menu>
+      <Name>Logging</Name>
+      <Directory>hamradio-logging.directory</Directory>
+      <Include><Category>X-HamRadio-Logging</Category></Include>
+    </Menu>
+
+    <Menu>
+      <Name>SDR</Name>
+      <Directory>hamradio-sdr.directory</Directory>
+      <Include><Category>X-HamRadio-SDR</Category></Include>
+    </Menu>
+
+    <Menu>
+      <Name>APRS</Name>
+      <Directory>hamradio-aprs.directory</Directory>
+      <Include><Category>X-HamRadio-APRS</Category></Include>
+    </Menu>
+
+    <Menu>
+      <Name>Satellite</Name>
+      <Directory>hamradio-satellite.directory</Directory>
+      <Include><Category>X-HamRadio-Satellite</Category></Include>
+    </Menu>
+
+    <Menu>
+      <Name>Winlink</Name>
+      <Directory>hamradio-winlink.directory</Directory>
+      <Include><Category>X-HamRadio-Winlink</Category></Include>
+    </Menu>
+
+    <Menu>
+      <Name>Antenna Modeling</Name>
+      <Directory>hamradio-antenna.directory</Directory>
+      <Include><Category>X-HamRadio-Antenna</Category></Include>
+    </Menu>
+
+    <Menu>
+      <Name>Morse Code</Name>
+      <Directory>hamradio-morse.directory</Directory>
+      <Include><Category>X-HamRadio-Morse</Category></Include>
+    </Menu>
+
+    <Menu>
+      <Name>Utilities</Name>
+      <Directory>hamradio-utilities.directory</Directory>
+      <Include><Category>X-HamRadio-Utilities</Category></Include>
+    </Menu>
+
+    <!-- Catch items with X-HamRadio but no subcategory -->
+    <OnlyUnallocated/>
+    <Include><Category>X-HamRadio</Category></Include>
+
+  </Menu>
+</Menu>
+MENUEOF
+
+    log_info "Ham Radio XDG menu XML written to $MENU_XML"
+
+    # KDE Plasma 6: symlink into plasma-applications-merged/ — KDE reads THIS
+    # directory (via plasma-applications.menu), not applications-merged/.
+    local plasma_merged="$HOME/.config/menus/plasma-applications-merged"
+    mkdir -p "$plasma_merged"
+    if ln -sf "$MENU_XML" "$plasma_merged/hamradio.menu"; then
+        log_info "KDE: symlinked into plasma-applications-merged/"
+    else
+        cp "$MENU_XML" "$plasma_merged/hamradio.menu" 2>/dev/null || true
+    fi
+
+    # Update the desktop database (safe to run early)
+    if command -v update-desktop-database &>/dev/null; then
+        update-desktop-database "$APPS_DIR" 2>/dev/null || true
+    fi
 
     log_info "Desktop menu groups created."
+}
+
+# Rebuild the KDE menu database after all packages are installed.
+# Must run AFTER all write_desktop/adopt_desktop calls because xdg-desktop-menu
+# (called inside those functions) recreates the empty dummy.menu that blocks
+# kbuildsycoca6. Calling this early would be immediately undone.
+rebuild_kde_menu() {
+    log_info "Rebuilding KDE menu database..."
+
+    # Fix any empty xdg-desktop-menu-dummy.menu files — these are created by
+    # xdg-desktop-menu install and cause kbuildsycoca6 to abort XML parsing.
+    for dummy in \
+        "$MENU_XML_DIR/xdg-desktop-menu-dummy.menu" \
+        "$HOME/.config/menus/plasma-applications-merged/xdg-desktop-menu-dummy.menu"; do
+        if [ -f "$dummy" ] && [ ! -s "$dummy" ]; then
+            cat > "$dummy" <<'DUMMYEOF'
+<!DOCTYPE Menu PUBLIC "-//freedesktop//DTD Menu 1.0//EN"
+  "http://www.freedesktop.org/standards/menu-spec/menu-1.0.dtd">
+<Menu><Name>Applications</Name></Menu>
+DUMMYEOF
+            log_info "Fixed empty dummy menu: $dummy"
+        fi
+    done
+
+    # Update desktop database
+    if command -v update-desktop-database &>/dev/null; then
+        update-desktop-database "$APPS_DIR" 2>/dev/null || true
+    fi
+
+    # KDE Plasma 6: rebuild sycoca with XDG_MENU_PREFIX=plasma-
+    # Without this prefix kbuildsycoca6 looks for applications.menu which
+    # does not exist in KDE Plasma 6 — it silently processes nothing.
+    if command -v kbuildsycoca6 &>/dev/null; then
+        local cache_dir="$HOME/.cache"
+        rm -f "$cache_dir/ksycoca6"* "$cache_dir/kbuildsycoca6"* 2>/dev/null || true
+        XDG_MENU_PREFIX=plasma- kbuildsycoca6 --noincremental 2>/dev/null || true
+        log_info "KDE: kbuildsycoca6 rebuilt with plasma- prefix"
+    fi
 }
 
 # Write a .desktop file and register it.
@@ -102,7 +225,12 @@ adopt_desktop() {
 
     if [ -n "$src" ] && [ "$src" != "$APPS_DIR/$outfile" ]; then
         cp "$src" "$APPS_DIR/$outfile"
-        sed -i "s|^Categories=.*|Categories=${categories}|" "$APPS_DIR/$outfile"
+        # Replace existing Categories= line, or append one if absent
+        if grep -q "^Categories=" "$APPS_DIR/$outfile"; then
+            sed -i "s|^Categories=.*|Categories=${categories}|" "$APPS_DIR/$outfile"
+        else
+            echo "Categories=${categories}" >> "$APPS_DIR/$outfile"
+        fi
         xdg-desktop-menu install --novendor "$APPS_DIR/$outfile" 2>/dev/null || true
         return 0
     fi
@@ -122,7 +250,7 @@ safe_install() {
     local display_name="${2:-$1}"
     local exec_cmd="${3:-$1}"
     local icon="${4:-applications-utilities}"
-    local categories="${5:-X-HamRadio;X-HamRadio-Utilities;}"
+    local categories="${5:-X-HamRadio-Utilities;}"
     local terminal="${6:-false}"
     local comment="${7:-$display_name}"
 
@@ -156,7 +284,7 @@ if [[ $EUID -eq 0 ]]; then
     exit 1
 fi
 
-# Accept Ubuntu 24.04, 25.x, or 26.04 "Resolute Raccoon"
+# Require Ubuntu 26.04 "Resolute Raccoon" — warn and prompt for anything else
 if ! grep -qE "(26\.04|resolute)" /etc/os-release; then
     log_warn "This script is designed for Ubuntu 26.04 (Resolute Raccoon) only."
     read -p "Continue anyway? (y/N) " -n 1 -r; echo
@@ -230,7 +358,7 @@ install_system_prep() {
         pkg-config autoconf automake autoconf-archive libtool gfortran \
         xdg-utils || true
 
-    # Python — 26.04 ships Python 3.13; use system packages, avoid bare pip
+    # Python — 26.04 ships Python 3.14; use system packages, avoid bare pip
     sudo apt install -y \
         python3 python3-pip python3-dev python3-setuptools python3-wheel \
         python3-venv python3-numpy python3-scipy python3-serial \
@@ -310,11 +438,11 @@ install_gridtracker() {
         sudo dpkg -i "/tmp/${GT_PACKAGE}" 2>/dev/null || sudo apt --fix-broken install -y
         rm -f "/tmp/${GT_PACKAGE}"
         if ! adopt_desktop "gridtracker" "gridtracker.desktop" \
-                "X-HamRadio;X-HamRadio-DigitalModes;"; then
+                "X-HamRadio-DigitalModes;"; then
             write_desktop "gridtracker.desktop" \
                 "GridTracker" "Live amateur radio map and statistics" \
                 "gridtracker" "network-wireless" \
-                "X-HamRadio;X-HamRadio-DigitalModes;"
+                "X-HamRadio-DigitalModes;"
         fi
         log_info "GridTracker installed!"
     else
@@ -326,7 +454,7 @@ install_js8call() {
     log_info "Installing JS8Call..."
 
     if safe_install "js8call" "JS8Call" "js8call" \
-            "applications-internet" "X-HamRadio;X-HamRadio-DigitalModes;"; then
+            "applications-internet" "X-HamRadio-DigitalModes;"; then
         return 0
     fi
 
@@ -350,7 +478,7 @@ install_js8call() {
         rm -f "/tmp/${JS8_PACKAGE}"
         write_desktop "js8call.desktop" \
             "JS8Call" "JS8 keyboard-to-keyboard messaging" \
-            "js8call" "applications-internet" "X-HamRadio;X-HamRadio-DigitalModes;"
+            "js8call" "applications-internet" "X-HamRadio-DigitalModes;"
         log_info "JS8Call installed!"
     else
         log_warn "JS8Call download failed. Manual: https://github.com/js8call/js8call/releases"
@@ -361,7 +489,7 @@ install_flarq() {
     log_info "Installing FLArq..."
 
     if safe_install "flarq" "FLArq" "flarq" \
-            "applications-internet" "X-HamRadio;X-HamRadio-DigitalModes;"; then
+            "applications-internet" "X-HamRadio-DigitalModes;"; then
         return 0
     fi
 
@@ -388,44 +516,44 @@ install_flarq() {
     FLDIGI_TARBALL="fldigi-${FLDIGI_VERSION}.tar.gz"
 
     # Try w1hkj.org, fall back to SourceForge
-    if ! wget -q --show-progress -O "${FLDIGI_TARBALL}" \
+    if ! wget -q --show-progress -O "/tmp/${FLDIGI_TARBALL}" \
             "https://www.w1hkj.org/files/fldigi/${FLDIGI_TARBALL}" 2>/dev/null; then
-        wget -q --show-progress -O "${FLDIGI_TARBALL}" \
+        wget -q --show-progress -O "/tmp/${FLDIGI_TARBALL}" \
             "https://sourceforge.net/projects/fldigi/files/fldigi/${FLDIGI_TARBALL}/download" \
             2>/dev/null || {
             log_warn "FLArq/fldigi source download failed."
             log_info "Manual: https://sourceforge.net/projects/fldigi/files/fldigi/"
-            rm -f "${FLDIGI_TARBALL}"
+            rm -f "/tmp/${FLDIGI_TARBALL}"
             return 1
         }
     fi
 
-    tar -xzf "${FLDIGI_TARBALL}"
-    cd "fldigi-${FLDIGI_VERSION}"
+    tar -xzf "/tmp/${FLDIGI_TARBALL}" -C /tmp
+    cd "/tmp/fldigi-${FLDIGI_VERSION}"
     autoreconf -fi 2>/dev/null || true
     # Configure with fldigi disabled — only build flarq
     ./configure --prefix=/usr/local --without-fldigi 2>/dev/null || \
         ./configure --prefix=/usr/local 2>/dev/null || {
             log_warn "FLArq configure failed"
-            cd /tmp; rm -rf "fldigi-${FLDIGI_VERSION}" "${FLDIGI_TARBALL}"
+            cd /tmp; rm -rf "/tmp/fldigi-${FLDIGI_VERSION}" "/tmp/${FLDIGI_TARBALL}"
             return 1
         }
     # Build only the flarq target if available, else build all
     make -j"$(nproc)" flarq 2>/dev/null || make -j"$(nproc)" 2>/dev/null || {
         log_warn "FLArq build failed"
-        cd /tmp; rm -rf "fldigi-${FLDIGI_VERSION}" "${FLDIGI_TARBALL}"
+        cd /tmp; rm -rf "/tmp/fldigi-${FLDIGI_VERSION}" "/tmp/${FLDIGI_TARBALL}"
         return 1
     }
     sudo install -m 755 src/flarq /usr/local/bin/flarq 2>/dev/null || \
         sudo make install 2>/dev/null || {
             log_warn "FLArq install failed"
-            cd /tmp; rm -rf "fldigi-${FLDIGI_VERSION}" "${FLDIGI_TARBALL}"
+            cd /tmp; rm -rf "/tmp/fldigi-${FLDIGI_VERSION}" "/tmp/${FLDIGI_TARBALL}"
             return 1
         }
-    cd /tmp; rm -rf "fldigi-${FLDIGI_VERSION}" "${FLDIGI_TARBALL}"
+    cd /tmp; rm -rf "/tmp/fldigi-${FLDIGI_VERSION}" "/tmp/${FLDIGI_TARBALL}"
     write_desktop "flarq.desktop" \
         "FLArq" "ARQ file transfer for FLDigi" \
-        "flarq" "applications-internet" "X-HamRadio;X-HamRadio-DigitalModes;"
+        "flarq" "applications-internet" "X-HamRadio-DigitalModes;"
     log_info "FLArq built and installed!"
 }
 
@@ -434,14 +562,14 @@ install_digital_modes() {
 
     # WSJT-X — package may be wsjtx or wsjt-x on 26.04
     if ! safe_install "wsjtx" "WSJT-X" "wsjtx" \
-            "network-wireless" "X-HamRadio;X-HamRadio-DigitalModes;"; then
+            "network-wireless" "X-HamRadio-DigitalModes;"; then
         safe_install "wsjt-x" "WSJT-X" "wsjtx" \
-            "network-wireless" "X-HamRadio;X-HamRadio-DigitalModes;" || true
+            "network-wireless" "X-HamRadio-DigitalModes;" || true
     fi
 
     # JTDX
     safe_install "jtdx" "JTDX" "jtdx" \
-        "network-wireless" "X-HamRadio;X-HamRadio-DigitalModes;" || true
+        "network-wireless" "X-HamRadio-DigitalModes;" || true
 
     install_js8call  || true
     install_gridtracker || true
@@ -450,18 +578,18 @@ install_digital_modes() {
     # flrig2 may replace flrig on 26.04
     for pkg in fldigi flmsg flamp; do
         safe_install "$pkg" "$pkg" "$pkg" \
-            "network-wireless" "X-HamRadio;X-HamRadio-DigitalModes;" || true
+            "network-wireless" "X-HamRadio-DigitalModes;" || true
     done
     if ! safe_install "flrig" "FLRig" "flrig" \
-            "network-wireless" "X-HamRadio;X-HamRadio-DigitalModes;"; then
+            "network-wireless" "X-HamRadio-DigitalModes;"; then
         safe_install "flrig2" "FLRig" "flrig2" \
-            "network-wireless" "X-HamRadio;X-HamRadio-DigitalModes;" || true
+            "network-wireless" "X-HamRadio-DigitalModes;" || true
     fi
 
     install_flarq || true
 
-    safe_install "xlog"  "XLog"  "xlog"  "x-office-address-book" "X-HamRadio;X-HamRadio-DigitalModes;" || true
-    safe_install "qsstv" "QSSTV" "qsstv" "network-wireless"       "X-HamRadio;X-HamRadio-DigitalModes;" || true
+    safe_install "xlog"  "XLog"  "xlog"  "x-office-address-book" "X-HamRadio-DigitalModes;" || true
+    safe_install "qsstv" "QSSTV" "qsstv" "network-wireless"       "X-HamRadio-DigitalModes;" || true
 
     log_info "Digital modes installation complete!"
 }
@@ -473,10 +601,10 @@ install_digital_modes() {
 install_aprs() {
     log_info "Installing APRS applications..."
 
-    safe_install "xastir"   "Xastir"    "xastir"   "network-transmit-receive" "X-HamRadio;X-HamRadio-APRS;" || true
-    safe_install "direwolf" "Direwolf"  "direwolf" "network-transmit-receive" "X-HamRadio;X-HamRadio-APRS;" || true
-    safe_install "aprx"     "APRx"      "aprx"     "network-transmit-receive" "X-HamRadio;X-HamRadio-APRS;" || true
-    safe_install "aprsdigi" "APRS Digi" "aprsdigi" "network-transmit-receive" "X-HamRadio;X-HamRadio-APRS;" || true
+    safe_install "xastir"   "Xastir"    "xastir"   "network-transmit-receive" "X-HamRadio-APRS;" || true
+    safe_install "direwolf" "Direwolf"  "direwolf" "network-transmit-receive" "X-HamRadio-APRS;" || true
+    safe_install "aprx"     "APRx"      "aprx"     "network-transmit-receive" "X-HamRadio-APRS;" || true
+    safe_install "aprsdigi" "APRS Digi" "aprsdigi" "network-transmit-receive" "X-HamRadio-APRS;" || true
 
     # Java needed by YAAC; prefer default-jre-headless on 26.04 (OpenJDK 23+)
     sudo apt install -y default-jre-headless 2>/dev/null || \
@@ -492,11 +620,11 @@ install_aprs() {
 install_logging() {
     log_info "Installing logging applications..."
 
-    safe_install "cqrlog"     "CQRLOG"     "cqrlog"     "x-office-address-book" "X-HamRadio;X-HamRadio-Logging;" || true
-    safe_install "klog"       "KLog"       "klog"       "x-office-address-book" "X-HamRadio;X-HamRadio-Logging;" || true
-    safe_install "trustedqsl" "TrustedQSL" "tqsl"       "x-office-address-book" "X-HamRadio;X-HamRadio-Logging;" || true
-    safe_install "pyqso"      "PyQSO"      "pyqso"      "x-office-address-book" "X-HamRadio;X-HamRadio-Logging;" || true
-    safe_install "tlf"        "TLF"        "tlf"        "x-office-address-book" "X-HamRadio;X-HamRadio-Logging;" true || true
+    safe_install "cqrlog"     "CQRLOG"     "cqrlog"     "x-office-address-book" "X-HamRadio-Logging;" || true
+    safe_install "klog"       "KLog"       "klog"       "x-office-address-book" "X-HamRadio-Logging;" || true
+    safe_install "trustedqsl" "TrustedQSL" "tqsl"       "x-office-address-book" "X-HamRadio-Logging;" || true
+    safe_install "pyqso"      "PyQSO"      "pyqso"      "x-office-address-book" "X-HamRadio-Logging;" || true
+    safe_install "tlf"        "TLF"        "tlf"        "x-office-address-book" "X-HamRadio-Logging;" true || true
 
     log_info "Logging applications installed!"
 }
@@ -516,17 +644,17 @@ install_sdr() {
 
     # gqrx may be gqrx-sdr on 26.04
     if ! safe_install "gqrx-sdr" "GQRX" "gqrx" \
-            "audio-input-microphone" "X-HamRadio;X-HamRadio-SDR;"; then
+            "audio-input-microphone" "X-HamRadio-SDR;"; then
         safe_install "gqrx" "GQRX" "gqrx" \
-            "audio-input-microphone" "X-HamRadio;X-HamRadio-SDR;" || true
+            "audio-input-microphone" "X-HamRadio-SDR;" || true
     fi
 
     safe_install "cubicsdr" "CubicSDR" "cubicsdr" \
-        "audio-input-microphone" "X-HamRadio;X-HamRadio-SDR;" || true
+        "audio-input-microphone" "X-HamRadio-SDR;" || true
     safe_install "quisk"    "Quisk"    "quisk"    \
-        "audio-input-microphone" "X-HamRadio;X-HamRadio-SDR;" || true
+        "audio-input-microphone" "X-HamRadio-SDR;" || true
     safe_install "cutesdr"  "CuteSDR"  "cutesdr"  \
-        "audio-input-microphone" "X-HamRadio;X-HamRadio-SDR;" || true
+        "audio-input-microphone" "X-HamRadio-SDR;" || true
 
     log_info "SDR applications installed!"
     log_warn "Log out and back in for USB/plugdev permissions to take effect."
@@ -540,15 +668,15 @@ install_sdr() {
 install_morse() {
     log_info "Installing Morse code applications..."
 
-    safe_install "aldo"       "Aldo"        "aldo"       "audio-speakers" "X-HamRadio;X-HamRadio-Morse;" true || true
-    safe_install "cw"         "CW"          "cw"         "audio-speakers" "X-HamRadio;X-HamRadio-Morse;" true || true
-    safe_install "cwcp"       "CWCP"        "cwcp"       "audio-speakers" "X-HamRadio;X-HamRadio-Morse;" true || true
-    safe_install "xcwcp"      "XCWCP"       "xcwcp"      "audio-speakers" "X-HamRadio;X-HamRadio-Morse;" || true
-    safe_install "morse"      "Morse"       "morse"      "audio-speakers" "X-HamRadio;X-HamRadio-Morse;" true || true
-    safe_install "morse2ascii" "Morse2ASCII" "morse2ascii" "audio-speakers" "X-HamRadio;X-HamRadio-Morse;" true || true
-    safe_install "morsegen"   "MorseGen"    "morsegen"   "audio-speakers" "X-HamRadio;X-HamRadio-Morse;" true || true
-    safe_install "qrq"        "QRQ"         "qrq"        "audio-speakers" "X-HamRadio;X-HamRadio-Morse;" true || true
-    safe_install "xdemorse"   "Xdemorse"    "xdemorse"   "audio-speakers" "X-HamRadio;X-HamRadio-Morse;" || true
+    safe_install "aldo"       "Aldo"        "aldo"       "audio-speakers" "X-HamRadio-Morse;" true || true
+    safe_install "cw"         "CW"          "cw"         "audio-speakers" "X-HamRadio-Morse;" true || true
+    safe_install "cwcp"       "CWCP"        "cwcp"       "audio-speakers" "X-HamRadio-Morse;" true || true
+    safe_install "xcwcp"      "XCWCP"       "xcwcp"      "audio-speakers" "X-HamRadio-Morse;" || true
+    safe_install "morse"      "Morse"       "morse"      "audio-speakers" "X-HamRadio-Morse;" true || true
+    safe_install "morse2ascii" "Morse2ASCII" "morse2ascii" "audio-speakers" "X-HamRadio-Morse;" true || true
+    safe_install "morsegen"   "MorseGen"    "morsegen"   "audio-speakers" "X-HamRadio-Morse;" true || true
+    safe_install "qrq"        "QRQ"         "qrq"        "audio-speakers" "X-HamRadio-Morse;" true || true
+    safe_install "xdemorse"   "Xdemorse"    "xdemorse"   "audio-speakers" "X-HamRadio-Morse;" || true
 
     log_info "Morse code applications installed!"
 }
@@ -560,9 +688,9 @@ install_morse() {
 install_antenna_modeling() {
     log_info "Installing antenna modeling software..."
 
-    safe_install "nec2c"   "NEC2c"   "nec2c"   "applications-engineering" "X-HamRadio;X-HamRadio-Antenna;" true || true
-    safe_install "xnec2c"  "XNEC2c"  "xnec2c"  "applications-engineering" "X-HamRadio;X-HamRadio-Antenna;" || true
-    safe_install "yagiuda" "Yagiuda" "yagiuda" "applications-engineering" "X-HamRadio;X-HamRadio-Antenna;" true || true
+    safe_install "nec2c"   "NEC2c"   "nec2c"   "applications-engineering" "X-HamRadio-Antenna;" true || true
+    safe_install "xnec2c"  "XNEC2c"  "xnec2c"  "applications-engineering" "X-HamRadio-Antenna;" || true
+    safe_install "yagiuda" "Yagiuda" "yagiuda" "applications-engineering" "X-HamRadio-Antenna;" true || true
 
     log_info "Antenna modeling software installed!"
 }
@@ -590,11 +718,11 @@ install_ardop() {
 
     local INSTALLED=false
     if [ -n "$ARDOP_BIN" ]; then
-        if wget -q --show-progress -O ardopcf \
+        if wget -q --show-progress -O /tmp/ardopcf \
                 "https://github.com/pflarue/ardop/releases/download/v${ARDOP_VERSION}/${ARDOP_BIN}" \
                 2>/dev/null; then
-            chmod +x ardopcf
-            sudo mv ardopcf /usr/local/bin/ardopcf
+            chmod +x /tmp/ardopcf
+            sudo mv /tmp/ardopcf /usr/local/bin/ardopcf
             sudo ln -sf /usr/local/bin/ardopcf /usr/local/bin/ardopc
             INSTALLED=true
             log_info "ardopcf binary installed."
@@ -615,7 +743,7 @@ install_ardop() {
             cd /tmp
         else
             make -j"$(nproc)" 2>/dev/null && \
-                sudo install -m 755 ardopcf /usr/local/bin/ardopcf && \
+                sudo install -m 755 /tmp/ardop/ardopcf /usr/local/bin/ardopcf && \
                 sudo ln -sf /usr/local/bin/ardopcf /usr/local/bin/ardopc && \
                 INSTALLED=true
             cd /tmp
@@ -661,7 +789,7 @@ install_winlink() {
         pat configure 2>/dev/null || true
         write_desktop "pat-winlink.desktop" \
             "Pat Winlink" "Winlink email over radio" \
-            "pat http" "mail-send-receive" "X-HamRadio;X-HamRadio-Winlink;"
+            "pat http" "mail-send-receive" "X-HamRadio-Winlink;"
         log_info "Pat Winlink installed!"
     else
         log_warn "Pat download failed. Manual: https://github.com/la5nta/pat/releases"
@@ -679,7 +807,7 @@ install_satellite() {
     log_info "Installing satellite tracking software..."
 
     safe_install "gpredict" "Gpredict" "gpredict" \
-        "weather-clear-night" "X-HamRadio;X-HamRadio-Satellite;" || true
+        "weather-clear-night" "X-HamRadio-Satellite;" || true
 
     log_info "Satellite tracking software installed!"
 }
@@ -692,29 +820,29 @@ install_utilities() {
     log_info "Installing general ham radio utilities..."
 
     safe_install "libhamlib-utils" "HamLib utilities" "rigctl" \
-        "applications-utilities" "X-HamRadio;X-HamRadio-Utilities;" true || true
+        "applications-utilities" "X-HamRadio-Utilities;" true || true
 
     # CHIRP — may be chirp or chirpnext on 26.04
     if ! safe_install "chirp" "CHIRP" "chirp" \
-            "applications-utilities" "X-HamRadio;X-HamRadio-Utilities;"; then
+            "applications-utilities" "X-HamRadio-Utilities;"; then
         safe_install "chirpnext" "CHIRP Next" "chirpnext" \
-            "applications-utilities" "X-HamRadio;X-HamRadio-Utilities;" || true
+            "applications-utilities" "X-HamRadio-Utilities;" || true
     fi
 
-    safe_install "freedv"      "FreeDV"             "freedv"  "audio-input-microphone" "X-HamRadio;X-HamRadio-Utilities;" || true
-    safe_install "gpsd"        "GPS Daemon"          "gpsd"    "applications-utilities" "X-HamRadio;X-HamRadio-Utilities;" true || true
-    safe_install "gpsd-clients" "GPS Clients"        "cgps"    "applications-utilities" "X-HamRadio;X-HamRadio-Utilities;" true || true
+    safe_install "freedv"      "FreeDV"             "freedv"  "audio-input-microphone" "X-HamRadio-Utilities;" || true
+    safe_install "gpsd"        "GPS Daemon"          "gpsd"    "applications-utilities" "X-HamRadio-Utilities;" true || true
+    safe_install "gpsd-clients" "GPS Clients"        "cgps"    "applications-utilities" "X-HamRadio-Utilities;" true || true
     # python3-gps is a library package with no launchable binary — install only, no menu entry
     package_exists "python3-gps" && sudo apt install -y python3-gps 2>/dev/null || true
-    safe_install "xdx"         "DX Cluster client"   "xdx"     "applications-utilities" "X-HamRadio;X-HamRadio-Utilities;" || true
-    safe_install "wwl"         "Maidenhead locator"  "wwl"     "applications-utilities" "X-HamRadio;X-HamRadio-Utilities;" true || true
-    safe_install "splat"       "SPLAT RF terrain"    "splat"   "applications-utilities" "X-HamRadio;X-HamRadio-Utilities;" true || true
+    safe_install "xdx"         "DX Cluster client"   "xdx"     "applications-utilities" "X-HamRadio-Utilities;" || true
+    safe_install "wwl"         "Maidenhead locator"  "wwl"     "applications-utilities" "X-HamRadio-Utilities;" true || true
+    safe_install "splat"       "SPLAT RF terrain"    "splat"   "applications-utilities" "X-HamRadio-Utilities;" true || true
 
     # fccexam and hamexam are available on 26.04
     safe_install "fccexam" "FCC Exam study" "fccexam" \
-        "applications-education" "X-HamRadio;X-HamRadio-Utilities;" true || true
+        "applications-education" "X-HamRadio-Utilities;" true || true
     safe_install "hamexam" "Ham exam study" "hamexam" \
-        "applications-education" "X-HamRadio;X-HamRadio-Utilities;" true || true
+        "applications-education" "X-HamRadio-Utilities;" true || true
 
     log_info "General utilities installation complete!"
 }
@@ -732,31 +860,31 @@ install_hamclock() {
     sudo apt install -y libx11-dev fonts-dejavu-core unzip || { log_warn "HamClock deps failed"; return 0; }
 
     mkdir -p ~/hamradio
-    cd ~/hamradio
 
     # Community mirror of ESPHamClock source
-    HAMCLOCK_REPO="https://github.com/marshmadnesss/ESPHamClock.git"
+    local HAMCLOCK_REPO="https://github.com/marshmadnesss/ESPHamClock.git"
+    local HAMCLOCK_DIR="$HOME/hamradio/ESPHamClock"
 
-    if [ -d "ESPHamClock/.git" ]; then
+    if [ -d "$HAMCLOCK_DIR/.git" ]; then
         log_info "Updating existing HamClock source..."
-        git -C ESPHamClock pull || true
+        git -C "$HAMCLOCK_DIR" pull || true
     else
-        git clone --depth=1 "$HAMCLOCK_REPO" ESPHamClock 2>/dev/null || {
+        git clone --depth=1 "$HAMCLOCK_REPO" "$HAMCLOCK_DIR" 2>/dev/null || {
             log_warn "HamClock clone failed."
             log_info "Community repo: $HAMCLOCK_REPO"
             return 0
         }
     fi
 
-    cd ESPHamClock
+    cd "$HAMCLOCK_DIR"
     log_info "Building HamClock..."
     if make -j"$(nproc)" hamclock-800x480 2>/dev/null; then
-        sudo cp hamclock-800x480 /usr/local/bin/
+        sudo cp "$HAMCLOCK_DIR/hamclock-800x480" /usr/local/bin/
         sudo ln -sf /usr/local/bin/hamclock-800x480 /usr/local/bin/hamclock
         write_desktop "hamclock.desktop" \
             "HamClock" "Ham Radio clock and information display" \
             "/usr/local/bin/hamclock -b hamclock.com:80" "hamradio" \
-            "X-HamRadio;X-HamRadio-Utilities;"
+            "X-HamRadio-Utilities;"
         log_info "HamClock installed! Run: hamclock -b hamclock.com:80"
         log_info "The -b flag points to the community backend (original is offline)."
     else
@@ -814,9 +942,9 @@ install_varac() {
             log_warn "Wine install failed"; return 1; }
     sudo apt install -y winetricks cabextract || true
 
-    export WINEPREFIX="$HOME/.wine_varac"
-    export WINEARCH=win32
-    wineboot --init 2>/dev/null || true
+    WINEPREFIX="$HOME/.wine_varac"
+    WINEARCH=win32
+    WINEPREFIX="$HOME/.wine_varac" WINEARCH=win32 wineboot --init 2>/dev/null || true
 
     log_info "Installing Wine components (dotnet462, vb6run, vcrun2015, pdh_nt4)..."
     log_warn "This may take 10–20 minutes..."
@@ -866,7 +994,7 @@ install_varac() {
     write_desktop "varac.desktop" \
         "VarAC" "Ham Radio Chat over VARA modem (Wine)" \
         "env WINEPREFIX=\"$HOME/.wine_varac\" WINEDEBUG=-all wine \"$VARAC_DIR/VarAC.exe\"" \
-        "wine" "X-HamRadio;X-HamRadio-Winlink;"
+        "wine" "X-HamRadio-Winlink;"
 
     sudo usermod -a -G dialout "$USER"
     log_info "VarAC installation complete!"
@@ -900,7 +1028,7 @@ install_drats() {
     sudo apt install -y python3-pyaudio 2>/dev/null || \
         sudo apt install -y portaudio19-dev || true
 
-    DRATS_DIR="$HOME/hamradio/d-rats"
+    local DRATS_DIR="$HOME/hamradio/d-rats"
     if [ -d "$DRATS_DIR/.git" ]; then
         git -C "$DRATS_DIR" pull || true
     else
@@ -946,7 +1074,7 @@ LAUNCHER
     write_desktop "d-rats.desktop" \
         "D-Rats" "D-STAR low-speed data communications" \
         "$HOME/.local/bin/d-rats" "network-wireless" \
-        "X-HamRadio;X-HamRadio-Utilities;"
+        "X-HamRadio-Utilities;"
 
     sudo usermod -a -G dialout "$USER" 2>/dev/null || true
     log_info "D-Rats installed! Run: d-rats"
@@ -969,17 +1097,19 @@ install_voacapl() {
         libcairo2-dev libgirepository-2.0-dev pkg-config || \
         log_warn "Some voacapl deps failed"
 
-    mkdir -p ~/hamradio; cd ~/hamradio
+    local VOACAPL_DIR="$HOME/hamradio/voacapl"
+    local PYTHONPROP_DIR="$HOME/hamradio/pythonprop"
+    mkdir -p "$HOME/hamradio"
 
     # ── voacapl engine ───────────────────────────────────────────────────────
-    if [ -d "voacapl/.git" ]; then
-        git -C voacapl pull || true
+    if [ -d "$VOACAPL_DIR/.git" ]; then
+        git -C "$VOACAPL_DIR" pull || true
     else
-        git clone --depth=1 https://github.com/jawatson/voacapl.git voacapl || {
+        git clone --depth=1 https://github.com/jawatson/voacapl.git "$VOACAPL_DIR" || {
             log_warn "voacapl clone failed"; return 1; }
     fi
 
-    cd ~/hamradio/voacapl
+    cd "$VOACAPL_DIR"
     # autoreconf is needed because Ubuntu 26.04's automake 1.17 breaks old configs
     autoreconf --install --force 2>/dev/null || \
         { automake --add-missing 2>/dev/null; autoreconf 2>/dev/null; } || true
@@ -994,34 +1124,33 @@ install_voacapl() {
 
     # ── pythonprop GUI ───────────────────────────────────────────────────────
     log_info "Installing pythonprop..."
-    cd ~/hamradio
 
-    if [ -d "pythonprop/.git" ]; then
-        git -C pythonprop pull || true
+    if [ -d "$PYTHONPROP_DIR/.git" ]; then
+        git -C "$PYTHONPROP_DIR" pull || true
     else
-        git clone --depth=1 https://github.com/jawatson/pythonprop.git pythonprop || {
+        git clone --depth=1 https://github.com/jawatson/pythonprop.git "$PYTHONPROP_DIR" || {
             log_warn "pythonprop clone failed — CLI still works"; return 0; }
     fi
 
-    cd ~/hamradio/pythonprop
-    python3 -m venv ~/hamradio/pythonprop/venv || { log_warn "pythonprop venv failed"; return 0; }
-    ~/hamradio/pythonprop/venv/bin/pip install --upgrade pip 2>/dev/null || true
-    ~/hamradio/pythonprop/venv/bin/pip install \
+    cd "$PYTHONPROP_DIR"
+    python3 -m venv "$PYTHONPROP_DIR/venv" || { log_warn "pythonprop venv failed"; return 0; }
+    "$PYTHONPROP_DIR/venv/bin/pip" install --upgrade pip 2>/dev/null || true
+    "$PYTHONPROP_DIR/venv/bin/pip" install \
         matplotlib cartopy numpy scipy 2>/dev/null || \
         log_warn "Some pythonprop pip deps failed"
 
-    ~/hamradio/pythonprop/venv/bin/pip install ./src 2>/dev/null || {
+    "$PYTHONPROP_DIR/venv/bin/pip" install ./src 2>/dev/null || {
         cd src
-        ~/hamradio/pythonprop/venv/bin/python3 setup.py install 2>/dev/null || \
+        "$PYTHONPROP_DIR/venv/bin/python3" setup.py install 2>/dev/null || \
             { log_warn "pythonprop setup failed"; cd ..; return 0; }
         cd ..
     }
 
     # Install voacapgui wrapper
-    if [ -f src/voacapgui ]; then
-        sudo install -m 755 src/voacapgui /usr/local/bin/voacapgui
-    elif [ -f scripts/voacapgui ]; then
-        sudo install -m 755 scripts/voacapgui /usr/local/bin/voacapgui
+    if [ -f "$PYTHONPROP_DIR/src/voacapgui" ]; then
+        sudo install -m 755 "$PYTHONPROP_DIR/src/voacapgui" /usr/local/bin/voacapgui
+    elif [ -f "$PYTHONPROP_DIR/scripts/voacapgui" ]; then
+        sudo install -m 755 "$PYTHONPROP_DIR/scripts/voacapgui" /usr/local/bin/voacapgui
     else
         sudo tee /usr/local/bin/voacapgui > /dev/null <<'LAUNCHER'
 #!/usr/bin/env bash
@@ -1029,14 +1158,13 @@ exec "$HOME/hamradio/pythonprop/venv/bin/python3" -m pythonprop.voacapgui "$@"
 LAUNCHER
     fi
     sudo chmod +x /usr/local/bin/voacapgui
-    # Point shebang at venv python so cartopy is on the path
     sudo sed -i "1s|.*python.*|#!${HOME}/hamradio/pythonprop/venv/bin/python3|" \
         /usr/local/bin/voacapgui 2>/dev/null || true
 
     write_desktop "voacapgui.desktop" \
         "VOACAP GUI" "HF propagation prediction (VOACAP/voacapl)" \
         "voacapgui" "applications-engineering" \
-        "X-HamRadio;X-HamRadio-Utilities;"
+        "X-HamRadio-Utilities;"
 
     log_info "voacapl + pythonprop installed! Run GUI: voacapgui"
 }
@@ -1059,6 +1187,8 @@ generate_sdrangel_config() {
         return 0
     fi
 
+    # Qt INI array format uses backslash-escaped keys: preset\1\key
+    # In a double-quoted heredoc, \\ writes a single \ — correct for Qt INI.
     cat > "$cfg" <<EOF
 [General]
 firstStart=false
@@ -1106,6 +1236,7 @@ generate_datv_config() {
     fi
 
     # QSettings INI format: key=value, group headers in [brackets]
+    # Ampersands in values are written literally — QSettings handles this correctly on Linux.
     cat > "$cfg" <<EOF
 [General]
 callsign=${CALLSIGN}
@@ -1338,7 +1469,7 @@ install_plutosdr() {
     # ── Step 6: Install SDRangel via Snap ─────────────────────────────────────
     log_info "Installing SDRangel via Snap..."
     if ! command -v snap &>/dev/null; then
-        sudo apt install -y snapd || { log_warn "snapd not available"; }
+        sudo apt install -y snapd 2>/dev/null || log_warn "snapd not available — skipping SDRangel"
     fi
 
     if command -v snap &>/dev/null; then
@@ -1355,7 +1486,7 @@ install_plutosdr() {
         write_desktop "sdrangel.desktop" \
             "SDRangel" "PlutoSDR Sky R1/R2 — wideband SDR receiver and transmitter" \
             "sdrangel" "audio-input-microphone" \
-            "X-HamRadio;X-HamRadio-SDR;"
+            "X-HamRadio-SDR;"
         log_info "SDRangel installed. Launch with: sdrangel"
     fi
 
@@ -1428,7 +1559,7 @@ install_datv() {
     fi
 
     # ── Step 3: Clone repository ──────────────────────────────────────────────
-    DATV_DIR="$HOME/hamradio/DATV-Linux"
+    local DATV_DIR="$HOME/hamradio/DATV-Linux"
     log_info "Cloning DATV-Linux into $DATV_DIR..."
 
     if [ -d "$DATV_DIR/.git" ]; then
@@ -1445,23 +1576,22 @@ install_datv() {
 
     # ── Step 4: Build the dvbs2_tx backend ────────────────────────────────────
     log_info "Building DATV-Linux dvbs2_tx backend..."
-    cd "$DATV_DIR"
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release 2>/dev/null && \
-        cmake --build build -j"$(nproc)" 2>/dev/null || {
+    (
+        cd "$DATV_DIR"
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release 2>/dev/null && \
+            cmake --build build -j"$(nproc)" 2>/dev/null
+    ) || {
         log_warn "DATV-Linux build failed — check cmake output above"
-        cd ~
         return 1
     }
 
     # Copy binary next to the GUI (expected by dvbs2_gui.py)
-    cp build/dvbs2_tx "$DATV_DIR/dvbs2_tx" 2>/dev/null || true
+    cp "$DATV_DIR/build/dvbs2_tx" "$DATV_DIR/dvbs2_tx" 2>/dev/null || true
 
     # Install system-wide
-    sudo cmake --install build 2>/dev/null || \
-        sudo install -m 755 build/dvbs2_tx /usr/local/bin/dvbs2_tx 2>/dev/null || \
+    sudo cmake --install "$DATV_DIR/build" 2>/dev/null || \
+        sudo install -m 755 "$DATV_DIR/build/dvbs2_tx" /usr/local/bin/dvbs2_tx 2>/dev/null || \
         log_warn "System-wide install failed — run from $DATV_DIR directly"
-
-    cd ~
 
     # ── Step 5: Check Python dependencies ────────────────────────────────────
     if [ -f "$DATV_DIR/check_dependencies.py" ]; then
@@ -1480,7 +1610,7 @@ install_datv() {
     cat > "$HOME/.local/bin/datv-linux" <<LAUNCHER
 #!/bin/bash
 cd "$DATV_DIR"
-exec python3 "$DATV_DIR/dvbs2_gui.py" "\$@"
+exec /usr/bin/python3 "$DATV_DIR/dvbs2_gui.py" "\$@"
 LAUNCHER
     chmod +x "$HOME/.local/bin/datv-linux"
 
@@ -1491,12 +1621,12 @@ LAUNCHER
     write_desktop "datv-linux.desktop" \
         "DATV-Linux" "DVB-S2 amateur television transmitter" \
         "$HOME/.local/bin/datv-linux" "applications-multimedia" \
-        "X-HamRadio;X-HamRadio-SDR;"
+        "X-HamRadio-SDR;"
 
     # ── Step 8: Generate DATV-Linux QSettings config ─────────────────────────
     generate_datv_config
 
-    # ── Step 8b: Add user to plugdev for SDR USB access ──────────────────────
+    # ── Step 9: Add user to plugdev for SDR USB access ────────────────────────
     sudo usermod -a -G plugdev "$USER" 2>/dev/null || true
 
     log_info "DATV-Linux installed!"
@@ -1559,6 +1689,9 @@ install_all() {
 
     echo ""
     log_info "All installations complete!"
+    # Rebuild KDE menu AFTER all packages are installed so xdg-desktop-menu's
+    # empty dummy file is fixed and kbuildsycoca6 runs with the full app set.
+    rebuild_kde_menu || true
 }
 
 ################################################################################
@@ -1574,6 +1707,56 @@ while true; do
         1)  install_all || true
             echo ""
             log_info "Done. Check messages above for any failures."
+            echo ""
+            echo "========================================================"
+            echo "  Post-Installation Notes"
+            echo "========================================================"
+            echo ""
+            echo "GENERAL"
+            echo "  • Log out and back in for group permission changes"
+            echo "  • All apps appear under 'Ham Radio' in your applications menu"
+            echo "  • Station: $CALLSIGN  |  Grid: $GRID_SQUARE"
+            echo ""
+            echo "DIGITAL MODES"
+            echo "  • WSJT-X:      wsjtx        (configure station on first run)"
+            echo "  • GridTracker: gridtracker"
+            echo ""
+            echo "WINLINK / ARDOP"
+            echo "  • Edit config:   ~/.config/pat/config.json"
+            echo "  • Run ARDOP:     ardopcf 8515 <capture_dev> <playback_dev>"
+            echo "  • List devices:  aplay -l"
+            echo "  • As a service:  sudo systemctl enable --now ardop@$USER"
+            echo ""
+            echo "VARAC  (requires manual install — menu option 14)"
+            echo "  • Download ZIP:  https://www.varac-hamradio.com/download"
+            echo "  • Enable 'Linux Compatible Mode' on first launch"
+            echo ""
+            echo "D-RATS"
+            echo "  • Run:    d-rats"
+            echo "  • Update: git -C ~/hamradio/d-rats pull"
+            echo ""
+            echo "VOACAPL / VOACAP GUI"
+            echo "  • GUI: voacapgui"
+            echo "  • CLI: voacapl ~/itshfbc"
+            echo "  • Missing data? Run: makeitshfbc"
+            echo ""
+            echo "DATV-LINUX"
+            echo "  • Run GUI:    datv-linux"
+            echo "  • Manual:     ~/hamradio/DATV-Linux/DATV-Linux_User_Manual.pdf"
+            echo "  • Update:     git -C ~/hamradio/DATV-Linux pull"
+            echo "  • Supported:  HackRF, LimeSDR Mini, ADALM Pluto/Pluto+ (stock firmware)"
+            echo ""
+            echo "SDR / PLUTOSDR"
+            echo "  • Verify PlutoSDR: SoapySDRUtil --find=\"driver=plutosdr\""
+            echo "  • GQRX device string (if not auto-detected): ip:192.168.2.1"
+            echo "  • Blacklist DVB-T if RTL-SDR isn't detected:"
+            echo "    echo 'blacklist dvb_usb_rtl28xxu' | sudo tee /etc/modprobe.d/blacklist-rtl.conf"
+            echo "  • SDRPlay drivers: https://www.sdrplay.com/downloads/"
+            echo ""
+            echo "========================================================"
+            echo "  73 de $CALLSIGN"
+            echo "========================================================"
+            echo ""
             read -p "Press Enter to exit..."
             break ;;
         2)  install_system_prep     || true ;;
@@ -1597,60 +1780,10 @@ while true; do
         *)  log_error "Invalid option."; sleep 2 ;;
     esac
 
-    [[ "$choice" != "0" && "$choice" != "1" ]] && { echo; read -p "Press Enter to continue..."; }
+    # After any individual install option, rebuild the KDE menu database
+    if [[ "$choice" != "0" && "$choice" != "1" ]]; then
+        rebuild_kde_menu || true
+        echo
+        read -p "Press Enter to continue..."
+    fi
 done
-
-################################################################################
-# Post-installation summary
-################################################################################
-
-echo ""
-echo "========================================================"
-echo "  Post-Installation Notes"
-echo "========================================================"
-echo ""
-echo "GENERAL"
-echo "  • Log out and back in for group permission changes"
-echo "  • All apps appear under 'Ham Radio' in your applications menu"
-echo "  • Station: $CALLSIGN  |  Grid: $GRID_SQUARE"
-echo ""
-echo "DIGITAL MODES"
-echo "  • WSJT-X:      wsjtx        (configure station on first run)"
-echo "  • GridTracker: gridtracker"
-echo ""
-echo "WINLINK / ARDOP"
-echo "  • Edit config:   ~/.config/pat/config.json"
-echo "  • Run ARDOP:     ardopcf 8515 <capture_dev> <playback_dev>"
-echo "  • List devices:  aplay -l"
-echo "  • As a service:  sudo systemctl enable --now ardop@$USER"
-echo ""
-echo "VARAC  (requires manual install — menu option 14)"
-echo "  • Download ZIP:  https://www.varac-hamradio.com/download"
-echo "  • Enable 'Linux Compatible Mode' on first launch"
-echo ""
-echo "D-RATS"
-echo "  • Run:    d-rats"
-echo "  • Update: git -C ~/hamradio/d-rats pull"
-echo ""
-echo "VOACAPL / VOACAP GUI"
-echo "  • GUI: voacapgui"
-echo "  • CLI: voacapl ~/itshfbc"
-echo "  • Missing data? Run: makeitshfbc"
-echo ""
-echo "DATV-LINUX"
-echo "  • Run GUI:    datv-linux"
-echo "  • Manual:     ~/hamradio/DATV-Linux/DATV-Linux_User_Manual.pdf"
-echo "  • Update:     git -C ~/hamradio/DATV-Linux pull"
-echo "  • Supported:  HackRF, LimeSDR Mini, ADALM Pluto/Pluto+ (stock firmware)"
-echo ""
-echo "SDR / PLUTOSDR"
-echo "  • Verify PlutoSDR: SoapySDRUtil --find=\"driver=plutosdr\""
-echo "  • GQRX device string (if not auto-detected): ip:192.168.2.1"
-echo "  • Blacklist DVB-T if RTL-SDR isn't detected:"
-echo "    echo 'blacklist dvb_usb_rtl28xxu' | sudo tee /etc/modprobe.d/blacklist-rtl.conf"
-echo "  • SDRPlay drivers: https://www.sdrplay.com/downloads/"
-echo ""
-echo "========================================================"
-echo "  73 de $CALLSIGN"
-echo "========================================================"
-echo ""

@@ -2,7 +2,7 @@
 
 The bash script installs a large number of HAM-Radio related software packages, organises them into a **Ham Radio** submenu in your desktop applications menu, and writes proper `.desktop` entries for every application.
 
-> **Version 1.0.4 — 2026-05-15**
+> **Version 1.0.9 — 2026-11-09**
 
 ---
 
@@ -19,13 +19,16 @@ The bash script installs a large number of HAM-Radio related software packages, 
 
 ## Companion scripts
 
-Two helper scripts are provided alongside the installer:
+Helper scripts and guides provided alongside the installer:
 
 | Script | Purpose |
 | --- | --- |
 | `check_links.sh` | Verifies every download URL and git repository used by the installer |
 | `check_packages.sh` | Checks every required apt package against the 26.04 repos before installing |
 | `plutosdr_sky_r1r2_setup.md` | Step-by-step setup guide for the PlutoSDR Sky R1/R2 (SoapySDR, SDRangel, GQRX) |
+| `fix_hamradio_submenus.sh` | Organises the **Ham Radio** menu into sub-folders (auto-detects KDE, GNOME, XFCE, …); `--undo-gnome` removes the GNOME folders |
+| `fix_kde_dummy_menu.sh` | KDE Plasma 6 repair: fixes the empty `xdg-desktop-menu-dummy.menu`, links the menu into `plasma-applications-merged/`, rebuilds the KDE menu cache |
+| `diagnose_kde_menu.sh` | Read-only report on every layer of the KDE menu setup — run it and share the output when the menu looks wrong |
 
 Run these first to spot any issues on your specific machine before committing to the full install.
 
@@ -62,7 +65,7 @@ After entering your details, the main menu appears:
 
 ```
 ================================================
-   Ham Radio Software Installer v1.0.4
+   Ham Radio Software Installer v1.0.9
    Ubuntu resolute edition
 ================================================
 Callsign: PA3RPW | Grid: JO22
@@ -86,6 +89,8 @@ Callsign: PA3RPW | Grid: JO22
 16. Install voacapl + pythonprop (HF propagation)
 17. Install PlutoSDR Sky R1/R2 (SoapyPlutoSDR + SDRangel)
 18. Install DATV-Linux (DVB-S2 transmitter)
+19. Install OBS Studio + v4l2loopback (streaming / virtual camera)
+20. Install Decodium 4 (FT8/FT4/FT2/Q65 weak-signal modes)
 
 0.  Exit
 ```
@@ -175,6 +180,8 @@ SDR / PLUTOSDR
 - **HamClock**: the original creator (WB0OEW) became a Silent Key in January 2026 and the original site is offline. The installer uses the community-maintained source fork and points HamClock at the community backend (`hamclock.com:80`).
 - **PlutoSDR Sky R1/R2**: after installation, log out and back in for `plugdev` USB permissions. If GQRX does not auto-detect the device, select *Other* in the device dialog and enter `ip:192.168.2.1`. See `plutosdr_sky_r1r2_setup.md` for full quickstart instructions.
 - **DATV-Linux**: requires HackRF, LimeSDR Mini, or ADALM Pluto/Pluto+ (stock firmware — no custom firmware required). Read `DATV-Linux_User_Manual.pdf` before transmitting on-air.
+- **OBS Studio / virtual camera**: a reboot may be needed before the `v4l2loopback` module loads. In OBS use *Tools → Virtual Camera → Start*, then pick `/dev/video10` in DATV-Linux.
+- **Decodium 4**: launch with `decodium`. Set callsign and locator, then audio and CAT, and make sure the system clock is synchronised before using FT8/FT4/FT2. Log out and back in for serial-port (`dialout`) access. On Linux with an NVIDIA GPU under Wayland, if the waterfall moves but FT8 decoding stalls, start it with `QSG_NO_VSYNC=1 decodium` (documented by the project; it can cause tearing).
 
 ---
 
@@ -196,7 +203,10 @@ All applications appear under a **Ham Radio** submenu in your desktop applicatio
 | [FLAmp](http://www.w1hkj.com/) | Multi-station ARQ file transfer using the AMP protocol over FLDigi. |
 | [FLArq](http://www.w1hkj.com/) | ARQ file transfer for FLDigi. Has no separate tarball — built from inside the fldigi source tree. |
 | [QSSTV](https://charlesreid1.com/wiki/QSSTV) | Slow-scan television (SSTV) and HAMDRM digital image transmission. |
+| [Decodium 4 Core Shannon](https://github.com/iu8lmc/Decodium-4.0-Core-Shannon) | Qt/QML weak-signal station built on the WSJT-X lineage: FT8, FT4, FT2, Q65, MSK144, JT65/JT9/JT4, FST4/FST4W, WSPR, integrated CAT, waterfall/panadapter, Live Map, DX Cluster, PSK Reporter, decode history, native SSTV (experimental). Installed as an AppImage (option 20). |
 | [XLog](https://www.nongnu.org/xlog/) | Lightweight QSO logger that integrates with FLDigi for on-air logging. |
+
+> **Decodium 4** — the source is in `iu8lmc/Decodium-4.0-Core-Shannon`, but the binaries are published in the Releases of `elisir80/Decodium-4.0-Core-Shannon`. The installer finds the newest release that has a Linux AppImage, checks it against the published SHA-256 before making it executable (a mismatch deletes the download), installs it to `~/hamradio/decodium/`, and adds a `decodium` launcher. Re-run option 20 to update. The SSTV, HAMDRM, Radiofax and encrypted-sharing features are marked experimental by the project itself.
 
 ---
 
@@ -303,6 +313,7 @@ All applications appear under a **Ham Radio** submenu in your desktop applicatio
 | [XDX](https://www.dxwatch.com/) | DX cluster telnet client for spotting and call lookups. |
 | [SPLAT!](https://www.qsl.net/kd2bd/splat.html) | RF terrain analysis and path-loss prediction tool using SRTM elevation data. |
 | [HamLib](https://hamlib.github.io/) | `rigctl` / `rotctl` — command-line rig and rotator control utilities. |
+| [OBS Studio](https://obsproject.com/) + [v4l2loopback](https://github.com/v4l2loopback/v4l2loopback) | Scene composition, recording and streaming, with a virtual camera at `/dev/video10` that DATV-Linux can use as its webcam source (option 19). PipeWire screen-capture portals are installed for Wayland. |
 | GPSd | GPS daemon with client tools for position-aware applications. |
 | [voacapl](https://github.com/jawatson/voacapl) | VOACAP HF propagation prediction engine, built from source. |
 | [VOACAP GUI](https://github.com/jawatson/pythonprop) | Graphical propagation planner built on voacapl. Run with `voacapgui`. |
@@ -358,6 +369,11 @@ Supported sources: video file, webcam/camera, external FFmpeg stream.
 
 | Version | Date | Notes |
 | --- | --- | --- |
+| 1.0.9 | 2026-11-09 | Added Decodium 4 Core Shannon (option 20): newest Linux AppImage found via the elisir80 release feed, SHA-256 verified before it becomes executable, `decodium` launcher with FUSE-less fallback, Digital Modes menu entry. `check_links.sh` and `check_packages.sh` extended (`libfuse2t64`) |
+| 1.0.8 | 2026-10-14 | Added OBS Studio + v4l2loopback virtual camera (option 19), PipeWire screen-capture portals, module auto-load on boot |
+| 1.0.7 | 2026-10-14 | KDE menu rebuild (`rebuild_kde_menu`) now runs after installs finish, so the empty `xdg-desktop-menu-dummy.menu` is repaired and `kbuildsycoca6` runs with `XDG_MENU_PREFIX=plasma-` against the full set of apps |
+| 1.0.6 | 2026-10-14 | Menu: each app carries only its sub-category tag (no `X-HamRadio` parent tag), `<OnlyUnallocated/>` catch-all in the menu XML, KDE Plasma 6 `plasma-applications-merged/` link, removed `xdg-desktop-menu forceupdate` |
+| 1.0.5 | 2026-05-15 | PlutoSDR step no longer aborts before SDRangel when an apt package fails; standalone `~/hamradio/install_plutosdr.sh` is written; starter config files for SDRangel and DATV-Linux are generated when none exists; assorted path/scoping bug fixes |
 | 1.0.4 | 2026-05-15 | Added DATV-Linux (option 18): DVB-S2 amateur TV transmitter supporting HackRF, LimeSDR Mini, and ADALM Pluto/Pluto+ (stock firmware); cmake build, PyQt6 GUI launcher, desktop entry |
 | 1.0.3 | 2026-05-15 | Added PlutoSDR Sky R1/R2 support (option 17): SoapyPlutoSDR built from source, SDRangel via Snap with full permission config, GQRX fallback device string, quickstart notes in post-install summary |
 | 1.0.2 | 2026-05-15 | Bug fixes: explicit `/tmp/` paths for all downloaded packages, `cd` back after HamClock build, `makeitshfbc` called with full path, VarAC `.desktop` path quoting, `install_all` step counter corrected, GridTracker curl guard added |

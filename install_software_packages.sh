@@ -2,11 +2,11 @@
 
 ################################################################################
 # Ham Radio Package Installer
-# Version 1.0.7  (2026-10-14)
+# Version 1.0.9  (2026-11-09)
 # For Ubuntu 26.04 "Resolute Raccoon" only
 ################################################################################
 
-VERSION="1.0.7"
+VERSION="1.0.9"
 
 # Colors for output
 RED='\033[0;31m'
@@ -337,10 +337,12 @@ show_menu() {
     echo "16. Install voacapl + pythonprop (HF propagation)"
     echo "17. Install PlutoSDR Sky R1/R2 (SoapyPlutoSDR + SDRangel)"
     echo "18. Install DATV-Linux (DVB-S2 transmitter)"
+    echo "19. Install OBS Studio + v4l2loopback (streaming / virtual camera)"
+    echo "20. Install Decodium 4 (FT8/FT4/FT2/Q65 weak-signal modes)"
     echo ""
     echo "0.  Exit"
     echo ""
-    read -p "Enter your choice [0-18]: " choice
+    read -p "Enter your choice [0-20]: " choice
 }
 
 ################################################################################
@@ -1170,6 +1172,323 @@ LAUNCHER
 }
 
 ################################################################################
+# 19. OBS Studio + v4l2loopback
+################################################################################
+
+install_obs() {
+    log_info "Installing OBS Studio and v4l2loopback virtual camera driver..."
+
+    # ── Step 1: v4l2loopback kernel module ───────────────────────────────────
+    # Confirmed in Ubuntu 26.04 resolute universe (v0.15.3-1ubuntu2)
+    # The pre-built kernel module package (linux-modules-v4l2loopback-generic)
+    # is preferred over DKMS on resolute — no recompilation needed.
+    log_info "Installing v4l2loopback..."
+    sudo apt install -y v4l2loopback-dkms v4l2loopback-utils || {
+        log_warn "v4l2loopback DKMS install failed — trying pre-built module"
+        sudo apt install -y linux-modules-v4l2loopback-generic 2>/dev/null || \
+            log_warn "v4l2loopback not installed — virtual camera will not work"
+    }
+
+    # Load the module now and configure it for OBS virtual camera
+    if modinfo v4l2loopback &>/dev/null; then
+        sudo modprobe v4l2loopback \
+            devices=1 \
+            video_nr=10 \
+            card_label="OBS Virtual Camera" \
+            exclusive_caps=1 2>/dev/null || \
+            log_warn "v4l2loopback module load failed — may need reboot"
+        log_info "v4l2loopback module loaded as /dev/video10 (OBS Virtual Camera)"
+    fi
+
+    # Make the module load automatically on boot with OBS-friendly options
+    echo "v4l2loopback" | sudo tee /etc/modules-load.d/v4l2loopback.conf > /dev/null
+    cat > /tmp/v4l2loopback.conf <<'EOF'
+options v4l2loopback devices=1 video_nr=10 card_label="OBS Virtual Camera" exclusive_caps=1
+EOF
+    sudo mv /tmp/v4l2loopback.conf /etc/modprobe.d/v4l2loopback.conf
+    log_ok "v4l2loopback configured for auto-load on boot"
+
+    # ── Step 2: PipeWire dependencies (required for screen capture on Wayland) ─
+    # Ubuntu 26.04 uses PipeWire by default. OBS needs these for Wayland capture.
+    log_info "Installing PipeWire screen capture dependencies..."
+    sudo apt install -y \
+        pipewire \
+        pipewire-pulse \
+        wireplumber \
+        libpipewire-0.3-dev \
+        xdg-desktop-portal \
+        xdg-desktop-portal-kde 2>/dev/null || \
+    sudo apt install -y \
+        pipewire \
+        pipewire-pulse \
+        wireplumber \
+        xdg-desktop-portal \
+        xdg-desktop-portal-gnome 2>/dev/null || \
+        log_warn "Some PipeWire packages failed — screen capture may not work under Wayland"
+
+    # ── Step 3: OBS Studio ───────────────────────────────────────────────────
+    # Try universe repo first (v32.1.0 confirmed on resolute), then OBS PPA
+    log_info "Installing OBS Studio..."
+    if ! sudo apt install -y obs-studio 2>/dev/null; then
+        log_info "obs-studio not in universe — adding OBS Project PPA..."
+        sudo add-apt-repository ppa:obsproject/obs-studio -y 2>/dev/null || {
+            # PPA may not have resolute yet — fall back to noble entries
+            log_warn "OBS PPA may not support resolute yet — trying noble fallback"
+            sudo sed -i 's/resolute/noble/g' \
+                /etc/apt/sources.list.d/obsproject-ubuntu-obs-studio-*.list \
+                2>/dev/null || true
+        }
+        sudo apt update
+        sudo apt install -y obs-studio || {
+            log_warn "OBS Studio apt install failed"
+            log_info "Manual install: https://obsproject.com/download"
+            return 1
+        }
+    fi
+    log_ok "OBS Studio installed"
+
+    # ── Step 4: Snap permissions for OBS virtual camera ──────────────────────
+    # If OBS was installed as a snap (fallback), grant v4l2loopback access
+    if snap list obs-studio &>/dev/null 2>&1; then
+        log_info "Granting OBS snap permissions for virtual camera..."
+        sudo snap connect obs-studio:kernel-module-observe 2>/dev/null || true
+        sudo snap connect obs-studio:camera              2>/dev/null || true
+        sudo snap connect obs-studio:audio-record        2>/dev/null || true
+        sudo snap connect obs-studio:alsa                2>/dev/null || true
+        sudo snap connect obs-studio:removable-media     2>/dev/null || true
+        sudo snap connect obs-studio:avahi-control       2>/dev/null || true
+    fi
+
+    # ── Step 5: Desktop entry ─────────────────────────────────────────────────
+    if ! adopt_desktop "obs" "obs-studio.desktop" "X-HamRadio-Utilities;"; then
+        write_desktop "obs-studio.desktop" \
+            "OBS Studio" "Screen recording and live streaming" \
+            "obs" "obs" \
+            "X-HamRadio-Utilities;"
+    fi
+
+    log_ok "OBS Studio installed!"
+    echo ""
+    echo "  VIRTUAL CAMERA"
+    echo "    Device:   /dev/video10  (OBS Virtual Camera)"
+    echo "    In OBS:   Tools → Virtual Camera → Start"
+    echo "    In DATV-Linux: select /dev/video10 as webcam source"
+    echo ""
+    echo "  WAYLAND SCREEN CAPTURE"
+    echo "    OBS uses PipeWire for screen capture under Wayland (KDE/Kubuntu)"
+    echo "    In OBS: Add Source → Screen Capture (PipeWire)"
+    echo ""
+    echo "  FIRST RUN"
+    echo "    obs"
+    echo "    The auto-configuration wizard will benchmark your hardware."
+    echo ""
+    log_warn "A reboot may be required for the v4l2loopback kernel module to load."
+    return 0
+}
+
+################################################################################
+# 20. Decodium 4 Core Shannon (FT8 / FT4 / FT2 / Q65 …)
+#
+# Source code lives in iu8lmc/Decodium-4.0-Core-Shannon, but the binaries are
+# published in the Releases of elisir80/Decodium-4.0-Core-Shannon (the app's own
+# update checker also tries elisir80 first, then iu8lmc). Linux ships as an
+# AppImage named decodium4-ft2-<version>-linux-x86_64.AppImage with a
+# .sha256.txt file beside it, so the version is resolved at install time and
+# the download is verified against that checksum before it is made executable.
+################################################################################
+
+install_decodium() {
+    log_info "Installing Decodium 4 Core Shannon (FT8/FT4/FT2/Q65 …)..."
+
+    local arch asset_suffix
+    arch=$(dpkg --print-architecture)
+    case "$arch" in
+        amd64) asset_suffix="linux-x86_64.AppImage"  ;;
+        arm64) asset_suffix="linux-aarch64.AppImage" ;;
+        *)
+            log_warn "Decodium has no AppImage for architecture: $arch"
+            return 0 ;;
+    esac
+
+    # ── Step 1: FUSE 2 (AppImages need it; renamed libfuse2t64 on 24.04+) ─────
+    if ! ldconfig -p 2>/dev/null | grep -q 'libfuse\.so\.2'; then
+        log_info "Installing FUSE 2 runtime for AppImage support..."
+        sudo apt install -y libfuse2t64 2>/dev/null || \
+            sudo apt install -y libfuse2 2>/dev/null || \
+            log_warn "libfuse2 not installed — launcher will use extract-and-run mode"
+    fi
+
+    # ── Step 2: Find the newest release that actually has a Linux AppImage ────
+    # A release can be published before its Linux build finishes, so "latest"
+    # may have no AppImage yet — walk recent releases instead of trusting it.
+    local repos=("elisir80/Decodium-4.0-Core-Shannon" "iu8lmc/Decodium-4.0-Core-Shannon")
+    local repo result dl_url="" api_sha=""
+
+    for repo in "${repos[@]}"; do
+        result=$(curl -fsSL --max-time 20 \
+            "https://api.github.com/repos/${repo}/releases?per_page=15" 2>/dev/null | \
+            python3 -c '
+import json, sys
+suffix = sys.argv[1]
+try:
+    releases = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+for rel in releases:
+    if rel.get("draft") or rel.get("prerelease"):
+        continue
+    for a in rel.get("assets", []):
+        n = a.get("name", "")
+        if n.startswith("decodium") and n.endswith(suffix):
+            print(a["browser_download_url"] + "\t" + (a.get("digest") or ""))
+            sys.exit(0)
+sys.exit(1)
+' "$asset_suffix") || result=""
+        if [ -n "$result" ]; then
+            IFS=$'\t' read -r dl_url api_sha <<< "$result"
+            break
+        fi
+    done
+
+    # Fallback if the GitHub API is rate-limited: follow /releases/latest and
+    # read the asset list GitHub serves for that tag.
+    if [ -z "$dl_url" ]; then
+        log_warn "GitHub API lookup failed — trying the Releases page instead..."
+        local final tag path
+        for repo in "${repos[@]}"; do
+            final=$(curl -sIL --max-time 20 -o /dev/null -w '%{url_effective}' \
+                "https://github.com/${repo}/releases/latest" 2>/dev/null) || continue
+            tag="${final##*/}"
+            [ -n "$tag" ] || continue
+            path=$(curl -sL --max-time 20 \
+                "https://github.com/${repo}/releases/expanded_assets/${tag}" 2>/dev/null | \
+                grep -oP "href=\"\K[^\"]*${asset_suffix}(?=\")" | head -1) || path=""
+            if [ -n "$path" ]; then
+                dl_url="https://github.com${path}"
+                break
+            fi
+        done
+    fi
+
+    if [ -z "$dl_url" ]; then
+        log_warn "Could not find a Decodium Linux AppImage in any release."
+        log_info "Manual download: https://github.com/elisir80/Decodium-4.0-Core-Shannon/releases"
+        return 1
+    fi
+
+    local fname
+    fname=$(basename "$dl_url")
+    log_info "Latest Linux build: $fname"
+
+    # ── Step 3: Expected checksum (sidecar file first, API digest as backup) ──
+    local expected_sha
+    expected_sha=$(curl -fsSL --max-time 20 "${dl_url}.sha256.txt" 2>/dev/null | \
+        awk '{print tolower($1)}' | head -1) || expected_sha=""
+    if ! [[ "$expected_sha" =~ ^[0-9a-f]{64}$ ]]; then
+        expected_sha="${api_sha#sha256:}"
+        expected_sha="${expected_sha,,}"
+    fi
+    if ! [[ "$expected_sha" =~ ^[0-9a-f]{64}$ ]]; then
+        log_warn "No SHA-256 checksum available for $fname — refusing to install an unverified binary."
+        log_info "Manual download: https://github.com/elisir80/Decodium-4.0-Core-Shannon/releases"
+        return 1
+    fi
+
+    # ── Step 4: Download + verify (skip if this exact build is already here) ──
+    local DECODIUM_DIR="$HOME/hamradio/decodium"
+    local target="$DECODIUM_DIR/$fname"
+    mkdir -p "$DECODIUM_DIR" "$HOME/.local/bin"
+
+    local actual_sha=""
+    if [ -f "$target" ]; then
+        actual_sha=$(sha256sum "$target" | awk '{print $1}')
+    fi
+
+    if [ "$actual_sha" = "$expected_sha" ]; then
+        log_info "$fname is already installed and verified — skipping download."
+    else
+        local tmp="/tmp/${fname}.part"
+        rm -f "$tmp"
+        log_info "Downloading $fname ..."
+        if ! wget -q --show-progress -O "$tmp" "$dl_url"; then
+            log_warn "Decodium download failed."
+            rm -f "$tmp"
+            return 1
+        fi
+        actual_sha=$(sha256sum "$tmp" | awk '{print $1}')
+        if [ "$actual_sha" != "$expected_sha" ]; then
+            log_warn "SHA-256 mismatch for $fname — deleting the download."
+            log_warn "  expected: $expected_sha"
+            log_warn "  actual:   $actual_sha"
+            rm -f "$tmp"
+            return 1
+        fi
+        if ! head -c 4 "$tmp" | grep -q 'ELF'; then
+            log_warn "Downloaded file is not an ELF/AppImage binary — deleting it."
+            rm -f "$tmp"
+            return 1
+        fi
+        mv "$tmp" "$target"
+        log_ok "Checksum verified ($expected_sha)"
+    fi
+    chmod +x "$target"
+
+    # Keep only the current build; point a stable name at it.
+    find "$DECODIUM_DIR" -maxdepth 1 -name 'decodium*.AppImage' ! -name "$fname" \
+        -delete 2>/dev/null || true
+    ln -sfn "$target" "$DECODIUM_DIR/Decodium.AppImage"
+
+    # ── Step 5: Launcher ──────────────────────────────────────────────────────
+    # Falls back to extract-and-run when FUSE 2 is unavailable. Any environment
+    # variables you set (e.g. QSG_NO_VSYNC=1) are passed straight through.
+    cat > "$HOME/.local/bin/decodium" <<'LAUNCHER'
+#!/bin/bash
+APPIMAGE="$HOME/hamradio/decodium/Decodium.AppImage"
+if [ ! -x "$APPIMAGE" ]; then
+    echo "Decodium AppImage not found at $APPIMAGE" >&2
+    exit 1
+fi
+if ! ldconfig -p 2>/dev/null | grep -q 'libfuse\.so\.2'; then
+    export APPIMAGE_EXTRACT_AND_RUN=1
+fi
+exec "$APPIMAGE" "$@"
+LAUNCHER
+    chmod +x "$HOME/.local/bin/decodium"
+
+    grep -q '\.local/bin' "$HOME/.bashrc" 2>/dev/null || \
+        echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+
+    # ── Step 6: Menu entry (Ham Radio → Digital Modes) ────────────────────────
+    write_desktop "decodium.desktop" \
+        "Decodium 4" "FT8/FT4/FT2/Q65 weak-signal digital modes" \
+        "\"$HOME/.local/bin/decodium\"" "network-wireless" \
+        "X-HamRadio-DigitalModes;"
+
+    # ── Step 7: Serial / CAT port access ──────────────────────────────────────
+    sudo usermod -a -G dialout "$USER" 2>/dev/null || true
+
+    log_ok "Decodium 4 installed: $fname"
+    echo ""
+    echo "  Run:          decodium"
+    echo "  Location:     $DECODIUM_DIR"
+    echo "  Update:       re-run this option — it fetches the newest release"
+    echo "  Source/docs:  https://github.com/iu8lmc/Decodium-4.0-Core-Shannon"
+    echo ""
+    echo "  FIRST RUN"
+    echo "    Set callsign ($CALLSIGN) and locator ($GRID_SQUARE), then audio and CAT."
+    echo "    Check your clock is synchronised before using FT8/FT4/FT2."
+    echo ""
+    echo "  NOTES"
+    echo "    • Don't run it at the same time as WSJT-X/JS8Call on the same audio"
+    echo "      device or CAT port."
+    echo "    • Linux + NVIDIA + Wayland: if the waterfall moves but FT8 decoding"
+    echo "      stalls, start it with:  QSG_NO_VSYNC=1 decodium"
+    echo ""
+    log_warn "Log out and back in for serial-port (dialout) permission to apply."
+    return 0
+}
+
+################################################################################
 # Config file generators
 ################################################################################
 
@@ -1659,11 +1978,13 @@ install_all() {
     local steps=(
         install_system_prep
         install_digital_modes
+        install_decodium
         install_aprs
         install_logging
         install_sdr
         install_plutosdr
         install_datv
+        install_obs
         install_morse
         install_antenna_modeling
         install_winlink
@@ -1740,6 +2061,17 @@ while true; do
             echo "  • CLI: voacapl ~/itshfbc"
             echo "  • Missing data? Run: makeitshfbc"
             echo ""
+            echo "DECODIUM 4"
+            echo "  • Launch:  decodium   (AppImage in ~/hamradio/decodium/)"
+            echo "  • Update:  re-run menu option 20 — fetches the newest release"
+            echo "  • NVIDIA+Wayland decode stalls: QSG_NO_VSYNC=1 decodium"
+            echo ""
+            echo "OBS STUDIO + V4L2LOOPBACK"
+            echo "  • Launch:         obs"
+            echo "  • Virtual camera: /dev/video10 — Tools → Virtual Camera → Start"
+            echo "  • Screen capture: Add Source → Screen Capture (PipeWire)"
+            echo "  • Use as DATV source: select /dev/video10 in DATV-Linux"
+            echo ""
             echo "DATV-LINUX"
             echo "  • Run GUI:    datv-linux"
             echo "  • Manual:     ~/hamradio/DATV-Linux/DATV-Linux_User_Manual.pdf"
@@ -1776,6 +2108,8 @@ while true; do
         16) install_voacapl         || true ;;
         17) install_plutosdr        || true ;;
         18) install_datv            || true ;;
+        19) install_obs             || true ;;
+        20) install_decodium        || true ;;
         0)  log_info "Exiting..."; exit 0 ;;
         *)  log_error "Invalid option."; sleep 2 ;;
     esac
